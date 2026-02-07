@@ -6,7 +6,7 @@
     <title>PyawLike - Minimal AI Translator</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal@latest/dist/index.min.js"></script>
 </head>
 <body class="dark-mode">
     <div class="top-nav">
@@ -148,12 +148,11 @@
                 else if (m[2]?.trim()) segments.push({ t: m[2].trim(), l: 'en' });
             }
             if (segments.length === 0) segments.push({ t: text.trim(), l: targetLang });
-            const tts = new EdgeTTS.EdgeTTS();
             for (const seg of segments) {
                 try {
                     const voice = seg.l === 'my' ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
-                    const audioData = await tts.ttsPromise(seg.t, voice);
-                    const audioBlob = new Blob([audioData], { type: 'audio/mpeg' });
+                    const tts = new UniversalEdgeTTS(seg.t, voice);
+                    const audioBlob = await tts.synthesize();
                     const audioUrl = URL.createObjectURL(audioBlob);
                     const a = new Audio(audioUrl); activeAudio = a;
                     await new Promise(r => { a.onended = () => { URL.revokeObjectURL(audioUrl); r(); }; a.play().catch(r); });
