@@ -11,25 +11,26 @@ jobs:
       - uses: actions/checkout @v4
 
       # --- SETUP ---
-      - name: Setup Node 22
+      - name: Setup Node 22 (Required for Cap v7)
         uses: actions/setup-node @v4
         with: { node-version: 22 }
-      - name: Setup Java 21
+      - name: Setup Java 21 (Required for Android 15)
         uses: actions/setup-java @v4
         with: { distribution: 'zulu', java-version: '21' }
 
-      # --- PREPARE ASSETS ---
+      # --- PREPARE ASSETS & INJECT API KEY ---
       - name: Prepare Web Assets
         run: |
           mkdir www
           rsync -av . www --exclude www --exclude node_modules --exclude .git --exclude .github --exclude android
+          # 🔥 INJECT THE API KEY DIRECTLY FOR APK
+          echo 'window.ENV = { GEMINI_API_KEY: "AIzaSyCPrA6Mtf6YsuxY67H6GzAwlSItcdzMWRU" };' > www/config.js
 
       # --- INSTALL DEPENDENCIES ---
       - name: Install Dependencies
         run: |
           if [ ! -f package.json ]; then npm init -y; fi
           npm install @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest
-          # Install the Native Speech Plugin
           npm install @capacitor-community/speech-recognition@latest
 
       # --- INIT ANDROID ---
@@ -38,22 +39,14 @@ jobs:
           npx cap init "PyawLike" "com.pyawlike.app" --web-dir=www
           npx cap add android
 
-      # --- 🔥 THE JAVA MICRO-SURGERY 🔥 ---
-      # This step manually registers the plugin in MainActivity.java just in case auto-discovery fails.
+      # --- PATCH 1: JAVA PLUGIN REGISTRATION ---
       - name: Patch MainActivity.java
         run: |
           cd android/app/src/main/java/com/pyawlike/app
-          
-          # 1. Add the Import statement
           sed -i 's/import com.getcapacitor.BridgeActivity;/import com.getcapacitor.BridgeActivity;\nimport com.getcapacitor.community.speechrecognition.SpeechRecognition;/' MainActivity.java
-          
-          # 2. Register the Plugin inside the class
           sed -i 's/public class MainActivity extends BridgeActivity {}/public class MainActivity extends BridgeActivity {\n    @Override\n    public void onCreate(android.os.Bundle savedInstanceState) {\n        super.onCreate(savedInstanceState);\n        registerPlugin(SpeechRecognition.class);\n    }\n}/' MainActivity.java
-          
-          # Print to verify
-          cat MainActivity.java
 
-      # --- MANIFEST PERMISSIONS ---
+      # --- PATCH 2: NUCLEAR MANIFEST OVERWRITE ---
       - name: Overwrite AndroidManifest.xml
         run: |
           cd android/app/src/main
@@ -98,7 +91,7 @@ jobs:
           </manifest>
           XML
 
-      # --- INJECT ICON ---
+      # --- PATCH 3: ICON INJECTION ---
       - name: Inject Custom Icon
         run: |
           if [ -f icon.png ]; then
@@ -110,7 +103,7 @@ jobs:
             rm -rf "$RES/mipmap-anydpi-v26"
           fi
 
-      # --- FIX KOTLIN CONFLICT ---
+      # --- PATCH 4: KOTLIN FIX ---
       - name: Inject Resolution Strategy
         run: |
           cd android
@@ -136,5 +129,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact @v4
         with:
-          name: pyawlike-native-registered
+          name: pyawlike-golden-final
           path: android/app/build/outputs/apk/debug/app-debug.apk

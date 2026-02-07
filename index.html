@@ -6,8 +6,8 @@
     <title>PyawLike - Golden Native AI</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
-    <!-- GOLDEN ERA: Stable Neural Edge TTS -->
-    <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
+    <!-- THE PROVEN QUALITY: Stable Edge TTS Universal -->
+    <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal@latest/dist/index.min.js"></script>
 </head>
 <body class="dark-mode">
     <div id="error-toast" style="position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:rgba(255,0,0,0.8); color:white; padding:10px 20px; border-radius:20px; font-size:12px; z-index:1000; display:none;"></div>
@@ -146,6 +146,7 @@
             if (window.speechSynthesis) window.speechSynthesis.cancel();
             const apiKey = getApiKey();
 
+            // 1. Natural Mode (Gemini AI Audio)
             if (natural && apiKey) {
                 try {
                     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
@@ -167,6 +168,7 @@
                 } catch (e) {}
             }
 
+            // 2. Blended Neural Era (Edge TTS - The "Quality One")
             const segments = [];
             const regex = /([\u1000-\u109F\s.,!?'"()\-]+)|([a-zA-Z0-9\s.,!?'"()\-]+)/g;
             let m;
