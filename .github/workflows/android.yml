@@ -11,7 +11,7 @@ jobs:
       - uses: actions/checkout @v4
 
       # --- SETUP ENVIRONMENT ---
-      - name: Setup Node.js & Java
+      - name: Setup Node.js
         uses: actions/setup-node @v4
         with: { node-version: 20 }
       - name: Setup Java
@@ -28,7 +28,7 @@ jobs:
       - name: Install Dependencies
         run: |
           if [ ! -f package.json ]; then npm init -y; fi
-          # We use latest to get the best Android support
+          # We install specific versions to stay safe, but latest is fine with the fix below
           npm install @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest
 
       # --- INIT ANDROID ---
@@ -37,13 +37,14 @@ jobs:
           npx cap init "PyawLike" "com.pyawlike.app" --web-dir=www
           npx cap add android
 
-      # --- 🔥 THE GOD MODE FIX (Force Kotlin Version) 🔥 ---
+      # --- 🔥 THE FIX: FORCE KOTLIN VERSION 🔥 ---
+      # This step injects a rule to FORCE the project to use Kotlin 1.9.0
+      # This solves the "Duplicate Class" error in your screenshot.
       - name: Inject Resolution Strategy
         run: |
           cd android
           
-          # This appends a rule to the root build.gradle to FORCE Kotlin 1.9.0
-          # This stops the "Duplicate Class" error by making everyone use the same version.
+          # Append the fix to the bottom of build.gradle
           cat <<EOT >> build.gradle
           
           allprojects {
