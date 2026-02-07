@@ -1,0 +1,6 @@
+# Local configuration / API Keys
+config.js
+
+# OS files
+.DS_Store
+Thumbs.db

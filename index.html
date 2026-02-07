@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PyawLike - Minimal Translator</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
+</head>
+<body class="dark-mode">
+    <div class="top-nav">
+        <div class="nav-dot" id="navDot" title="Settings"></div>
+        <span class="perm-status" id="permStatus">OFF</span>
+    </div>
+    <div class="dropdown-menu" id="dropdownMenu">
+        <button class="premium-menu-item" id="premiumBtn">PREMIUM</button>
+        <div class="menu-item">
+            <span class="menu-label">DARK MODE</span>
+            <label class="switch small-switch">
+                <input type="checkbox" id="themeSwitch" checked>
+                <span class="slider"></span>
+            </label>
+        </div>
+        <div class="menu-item">
+            <span class="menu-label">NATURAL MODE</span>
+            <label class="switch small-switch">
+                <input type="checkbox" id="naturalSwitch">
+                <span class="slider"></span>
+            </label>
+        </div>
+        <div class="menu-item">
+            <span class="menu-label">SHOW TEXT</span>
+            <label class="switch small-switch">
+                <input type="checkbox" id="showTextSwitch">
+                <span class="slider"></span>
+            </label>
+        </div>
+    </div>
+
+    <div class="text-display-area" id="transcription"></div>
+    
+    <div class="speaker-wrapper" id="speakerWrapper">
+        <!-- Horizontal Wave Animation (Only visible when Show Text is OFF) -->
+        <div class="horizontal-waves" id="hWaves">
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+            <div class="bar"></div>
+        </div>
+        <!-- Processing Loader -->
+        <div class="processing-loader" id="pLoader">
+            <div class="loader-dot"></div>
+            <div class="loader-dot"></div>
+            <div class="loader-dot"></div>
+        </div>
+        <div class="split-btn-container" id="mainCircle">
+            <button class="half-btn left" id="btnMM">
+                <span class="btn-label">MM</span>
+            </button>
+            <button class="half-btn right" id="btnENG">
+                <span class="btn-label">ENG</span>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const btnMM = document.getElementById('btnMM');
+        const btnENG = document.getElementById('btnENG');
+        const speakerWrapper = document.getElementById('speakerWrapper');
+        const hWaves = document.getElementById('hWaves');
+        const pLoader = document.getElementById('pLoader');
+        const transcription = document.getElementById('transcription');
+        const permStatus = document.getElementById('permStatus');
+        const navDot = document.getElementById('navDot');
+        const dropdownMenu = document.getElementById('dropdownMenu');
+        const themeSwitch = document.getElementById('themeSwitch');
+        const naturalSwitch = document.getElementById('naturalSwitch');
+        const showTextSwitch = document.getElementById('showTextSwitch');
+        const body = document.body;
+
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition = null;
+        let isRecording = false;
+        let isTransitioning = false; 
+        let fullTranscript = '';
+        let isMicEnabled = false;
+        let currentMicLang = 'en-US';
+        let currentTranslationController = null;
+
+        const getApiKey = () => (window.ENV?.GEMINI_API_KEY && !window.ENV.GEMINI_API_KEY.includes("REPLACE_")) ? window.ENV.GEMINI_API_KEY : "";
+
+        // UI Interactions
+        navDot.addEventListener('click', (e) => { e.stopPropagation(); dropdownMenu.classList.toggle('active'); });
+        document.addEventListener('click', (e) => { if (!navDot.contains(e.target) && !dropdownMenu.contains(e.target)) dropdownMenu.classList.remove('active'); });
+        themeSwitch.addEventListener('change', () => { body.classList.toggle('dark-mode', themeSwitch.checked); localStorage.setItem('themePref', themeSwitch.checked ? 'dark' : 'light'); });
+        naturalSwitch.addEventListener('change', () => { localStorage.setItem('naturalModePref', naturalSwitch.checked); });
+        
+        showTextSwitch.addEventListener('change', () => { 
+            localStorage.setItem('showTextPref', showTextSwitch.checked);
+            transcription.classList.toggle('hidden', !showTextSwitch.checked);
+            // Sync waves visibility if currently recording
+            if (isRecording) hWaves.classList.toggle('active', !showTextSwitch.checked);
+        });
+
+        permStatus.addEventListener('click', async (e) => { 
+            e.stopPropagation(); 
+            if (isTransitioning) return; 
+            if (isMicEnabled) disableMic(); 
+            else await requestMicAccess(); 
+        });
+
+        function disableMic() {
+            isRecording = false;
+            if (recognition) { 
+                try { 
+                    recognition.onend = null; 
+                    recognition.onerror = null;
+                    recognition.stop(); 
+                } catch(e){} 
+            }
+            if (window.localStream) {
+                window.localStream.getTracks().forEach(track => track.stop());
+                window.localStream = null;
+            }
+            localStorage.removeItem('micPermissionPref');
+            updateSwitch('denied');
+        }
+
+        // Init settings
+        const savedTheme = localStorage.getItem('themePref');
+        if (savedTheme === 'light') { body.classList.remove('dark-mode'); themeSwitch.checked = false; }
+        naturalSwitch.checked = localStorage.getItem('naturalModePref') !== 'false'; 
+        showTextSwitch.checked = localStorage.getItem('showTextPref') === 'true';
+        transcription.classList.toggle('hidden', !showTextSwitch.checked);
+
+        async function checkPermission() {
+            try { if (!navigator.permissions) return; const result = await navigator.permissions.query({ name: 'microphone' }); if (result.state === 'granted') await requestMicAccess(true); updateSwitch(result.state); result.onchange = () => updateSwitch(result.state); } catch (e) {}
+        }
+
+        function updateSwitch(state) {
+            isMicEnabled = (state === 'granted');
+            permStatus.textContent = isMicEnabled ? 'ON' : 'OFF';
+            permStatus.classList.toggle('active', isMicEnabled);
+            if (isMicEnabled) localStorage.setItem('micPermissionPref', 'true');
+            else localStorage.removeItem('micPermissionPref');
+        }
+
+        async function requestMicAccess(isSilent = false) {
+            try { const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); window.localStream = stream; updateSwitch('granted'); initRecognition(); return true; } catch (e) { if (!isSilent) updateSwitch('denied'); return false; }
+        }
+
+        // --- Core Translation Engine ---
+        async function aiDecideLanguage(text) {
+            const apiKey = getApiKey();
+            if (/[\u1000-\u109F]/.test(text)) return 'MM';
+            if (!apiKey) return 'ENG';
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: `Identify MM or ENG. Output ONLY "MM" or "ENG". Text: ${text}` }] }] })
+                });
+                const data = await response.json();
+                return data.candidates[0].content.parts[0].text.trim().toUpperCase().includes('MM') ? 'MM' : 'ENG';
+            } catch (e) { return 'ENG'; }
+        }
+
+        async function processWithGemini(text, sl, tl) {
+            const apiKey = getApiKey();
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: `Translate ${sl==='my'?'MM':'EN'} to ${tl==='my'?'MM':'EN'} naturally. Output ONLY JSON: {"refined":"...","translated":"..."}\nText: ${text}` }] }] })
+                });
+                const data = await response.json();
+                return JSON.parse(data.candidates[0].content.parts[0].text.replace(/```json|```/g, "").trim());
+            } catch (e) { return null; }
+        }
+
+        async function translateNormal(text, sl, tl) {
+            if (currentTranslationController) currentTranslationController.abort();
+            currentTranslationController = new AbortController();
+            try {
+                const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`;
+                const resp = await fetch(url, { signal: currentTranslationController.signal });
+                const data = await resp.json();
+                return data[0].map(s => s[0]).join('').trim();
+            } catch (e) { return e.name === 'AbortError' ? "ABORTED" : null; }
+        }
+
+        async function speakWithPremium(text, targetLang) {
+            const apiKey = getApiKey();
+            if (naturalSwitch.checked && apiKey) {
+                try {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: [{ parts: [{ text: `Speak naturally in ${targetLang === 'my' ? 'MM' : 'EN'}: ${text}` }] }], generationConfig: { responseMimeType: "audio/wav" } })
+                    });
+                    const data = await response.json();
+                    if (data.candidates[0].content.parts[0].inlineData) {
+                        const audioBlob = new Blob([Uint8Array.from(atob(data.candidates[0].content.parts[0].inlineData.data), c => c.charCodeAt(0))], { type: 'audio/wav' });
+                        const audioUrl = URL.createObjectURL(audioBlob);
+                        const audio = new Audio(audioUrl);
+                        await new Promise(r => { audio.onended = r; audio.onerror = r; audio.play().catch(r); });
+                        URL.revokeObjectURL(audioUrl); return;
+                    }
+                } catch (e) {}
+            }
+            const segments = [];
+            const regex = /([\u1000-\u109F\s.,!?'"()\-]+)|([a-zA-Z0-9\s.,!?'"()\-]+)/g;
+            let m;
+            while ((m = regex.exec(text)) !== null) {
+                if (m[1]?.trim()) segments.push({ t: m[1].trim(), l: 'my' });
+                else if (m[2]?.trim()) segments.push({ t: m[2].trim(), l: 'en' });
+            }
+            if (segments.length === 0) segments.push({ t: text.trim(), l: targetLang });
+            for (const seg of segments) {
+                await new Promise(async (resolve) => {
+                    let url = '';
+                    if (typeof EdgeTTS !== 'undefined') {
+                        const voice = (seg.l === 'my') ? 'my-MM-NilarNeural' : 'en-US-JennyNeural';
+                        const tts = new EdgeTTS.UniversalEdgeTTS(seg.t, voice);
+                        const blob = await tts.synthesize();
+                        url = URL.createObjectURL(blob);
+                    } else {
+                        url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${seg.l}&client=tw-ob&q=${encodeURIComponent(seg.t)}`;
+                    }
+                    const audio = new Audio(url);
+                    audio.onended = () => { if (url.startsWith('blob:')) URL.revokeObjectURL(url); resolve(); };
+                    audio.onerror = () => { speakWithBrowser(seg.t, seg.l).then(resolve); };
+                    audio.play().catch(() => { speakWithBrowser(seg.t, seg.l).then(resolve); });
+                });
+            }
+        }
+
+        function speakWithBrowser(text, lang) {
+            return new Promise((resolve) => {
+                if (!window.speechSynthesis) return resolve();
+                window.speechSynthesis.cancel();
+                const utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = (lang === 'en' || lang === 'en-US') ? 'en-US' : 'my-MM';
+                utterance.onend = resolve; utterance.onerror = resolve;
+                window.speechSynthesis.speak(utterance);
+            });
+        }
+
+        function initRecognition() {
+            if (recognition || !SpeechRecognition) return;
+            recognition = new SpeechRecognition();
+            recognition.continuous = true; recognition.interimResults = true;
+            recognition.onresult = (event) => {
+                let interim = '', finalized = '';
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    if (event.results[i].isFinal) finalized += event.results[i][0].transcript;
+                    else interim += event.results[i][0].transcript;
+                }
+                if (finalized) fullTranscript += finalized + ' ';
+                updateLiveTranscription(`${fullTranscript}${interim}`);
+            };
+            recognition.onstart = () => { isTransitioning = false; };
+            recognition.onerror = () => { isTransitioning = false; isRecording = false; updateUIState('ready'); };
+            recognition.onend = () => { 
+                isTransitioning = false; 
+                if (isRecording) { try { recognition.start(); } catch(e){} } 
+            };
+        }
+
+        function updateLiveTranscription(text) {
+            if (!showTextSwitch.checked) return;
+            let liveLine = transcription.querySelector('.live-line');
+            if (!liveLine) { transcription.innerHTML = `<div class="live-line"></div>`; liveLine = transcription.querySelector('.live-line'); }
+            liveLine.textContent = text;
+        }
+
+        function renderFinalRoll(sub, main) {
+            if (!showTextSwitch.checked) return;
+            transcription.innerHTML = '';
+            const line = document.createElement('div');
+            line.className = 'roll-line';
+            line.innerHTML = `<div class="source-subtext">${sub}</div><div class="translation-main">${main}</div>`;
+            transcription.appendChild(line);
+        }
+
+        function updateUIState(state, side = '') {
+            // state: 'ready', 'listening', 'processing'
+            const useWaves = state === 'listening' && !showTextSwitch.checked;
+            hWaves.classList.toggle('active', useWaves);
+            pLoader.classList.toggle('active', state === 'processing');
+            
+            if (state === 'listening') {
+                speakerWrapper.className = side === 'my-MM' ? 'speaker-wrapper is-active-left' : 'speaker-wrapper is-active-right';
+            } else {
+                speakerWrapper.className = 'speaker-wrapper';
+            }
+        }
+
+        function startRecording(lang) {
+            if (isTransitioning || isRecording) return;
+            if (!isMicEnabled) return;
+            currentMicLang = lang;
+            initRecognition();
+            try { 
+                isTransitioning = true; fullTranscript = ''; recognition.lang = currentMicLang; recognition.start(); isRecording = true; 
+                updateUIState('listening', lang);
+                if (showTextSwitch.checked) transcription.innerHTML = '<div class="live-line">Listening...</div>';
+            } catch (e) { isTransitioning = false; isRecording = false; updateUIState('ready'); }
+        }
+
+        async function stopRecording() {
+            if (isTransitioning || !isRecording) return;
+            isRecording = false; isTransitioning = true; updateUIState('processing');
+            try { if (recognition) { recognition.onend = null; recognition.onerror = null; recognition.stop(); } } catch(e) {}
+            
+            await new Promise(r => setTimeout(r, 500));
+            const rawText = fullTranscript.trim();
+            if (rawText) {
+                try {
+                    const lang = await aiDecideLanguage(rawText);
+                    const sl = lang === 'MM' ? 'my' : 'en', tl = lang === 'MM' ? 'en' : 'my';
+                    const isNatural = naturalSwitch.checked && getApiKey();
+                    if (isNatural) {
+                        const res = await processWithGemini(rawText, sl, tl);
+                        if (res && res.refined && res.translated) { renderFinalRoll(res.refined, res.translated); await speakWithPremium(res.translated, tl); }
+                        else { await fallbackNormal(rawText, sl, tl); }
+                    } else { await fallbackNormal(rawText, sl, tl); }
+                } catch(e) {}
+            }
+            updateUIState('ready');
+            isTransitioning = false;
+        }
+
+        async function fallbackNormal(text, sl, tl) {
+            const translated = await translateNormal(text, sl, tl);
+            if (translated && translated !== "ABORTED") {
+                const inputDisplay = sl === 'en' ? refineEnglish(text) : text;
+                renderFinalRoll(inputDisplay, translated); await speakWithPremium(translated, tl);
+            }
+        }
+
+        function refineEnglish(t) {
+            let r = t.trim().charAt(0).toUpperCase() + t.trim().slice(1);
+            if (!/[.!?]$/.test(r)) r += ".";
+            const c = [[/\b(i)\b/g, "I"], [/\b(im)\b/gi, "I'm"], [/\b(dont)\b/gi, "don't"], [/\b(cant)\b/gi, "can't"], [/\b(youre)\b/gi, "you're"], [/\b(its)\b/gi, "it's"], [/\b(didnt)\b/gi, "didn't"], [/\b(couldnt)\b/gi, "couldn't"], [/\b(shouldnt)\b/gi, "shouldn't"]];
+            c.forEach(([reg, val]) => { r = r.replace(reg, val); }); return r.replace(/\s+/g, " ");
+        }
+        
+        btnMM.addEventListener('click', (e) => { e.preventDefault(); if (isTransitioning) return; if (isRecording) stopRecording(); else startRecording('my-MM'); });
+        btnENG.addEventListener('click', (e) => { e.preventDefault(); if (isTransitioning) return; if (isRecording) stopRecording(); else startRecording('en-US'); });
+
+        (async () => {
+            const pref = localStorage.getItem('micPermissionPref');
+            if (pref === 'true') await requestMicAccess(true);
+            checkPermission();
+        })();
+    </script>
+</body>
+</html>
