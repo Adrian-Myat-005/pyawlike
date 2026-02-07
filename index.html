@@ -148,10 +148,10 @@
                 else if (m[2]?.trim()) segments.push({ t: m[2].trim(), l: 'en' });
             }
             if (segments.length === 0) segments.push({ t: text.trim(), l: targetLang });
+            const tts = new EdgeTTS.EdgeTTS();
             for (const seg of segments) {
                 try {
-                    const voice = seg.l === 'my' ? 'my-MM-ThihaNeural' : 'en-US-GuyNeural';
-                    const tts = new EdgeTTS.EdgeTTS();
+                    const voice = seg.l === 'my' ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
                     const audioData = await tts.ttsPromise(seg.t, voice);
                     const audioBlob = new Blob([audioData], { type: 'audio/mpeg' });
                     const audioUrl = URL.createObjectURL(audioBlob);
