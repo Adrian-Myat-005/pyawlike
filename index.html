@@ -149,12 +149,22 @@
             }
             if (segments.length === 0) segments.push({ t: text.trim(), l: targetLang });
             for (const seg of segments) {
-                await new Promise((resolve) => {
-                    const a = new Audio(`https://translate.google.com/translate_tts?ie=UTF-8&tl=${seg.l}&client=tw-ob&q=${encodeURIComponent(seg.t)}`);
-                    a.preload = 'auto'; activeAudio = a;
-                    a.onended = () => { a.src = ""; resolve(); };
-                    a.onerror = resolve; a.play().catch(resolve);
-                });
+                try {
+                    const voice = seg.l === 'my' ? 'my-MM-ThihaNeural' : 'en-US-GuyNeural';
+                    const tts = new EdgeTTS.EdgeTTS();
+                    const audioData = await tts.ttsPromise(seg.t, voice);
+                    const audioBlob = new Blob([audioData], { type: 'audio/mpeg' });
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    const a = new Audio(audioUrl); activeAudio = a;
+                    await new Promise(r => { a.onended = () => { URL.revokeObjectURL(audioUrl); r(); }; a.play().catch(r); });
+                } catch (e) {
+                    await new Promise((resolve) => {
+                        const a = new Audio(`https://translate.google.com/translate_tts?ie=UTF-8&tl=${seg.l}&client=tw-ob&q=${encodeURIComponent(seg.t)}`);
+                        a.preload = 'auto'; activeAudio = a;
+                        a.onended = () => { a.src = ""; resolve(); };
+                        a.onerror = resolve; a.play().catch(resolve);
+                    });
+                }
             }
         }
 
