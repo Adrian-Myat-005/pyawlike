@@ -6,7 +6,8 @@
     <title>PyawLike - Minimal AI Translator</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal@latest/dist/index.min.js"></script>
+    <!-- Using a more robust Edge TTS implementation -->
+    <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal@1.1.0/dist/index.min.js"></script>
 </head>
 <body class="dark-mode">
     <div class="top-nav">
@@ -81,10 +82,10 @@
             if (audioUnlocked) return;
             console.log("Attempting to unlock audio context...");
             
-            // Prime the master audio element
+            // Prime the master audio element with a silent source
             masterAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA=='; 
             masterAudio.play().then(() => {
-                console.log("Web Audio unlocked successfully.");
+                console.log("Web Audio unlocked.");
                 audioUnlocked = true;
             }).catch(e => console.warn("Web Audio unlock failed:", e));
 
@@ -93,7 +94,6 @@
                 const primeUtterance = new SpeechSynthesisUtterance("");
                 primeUtterance.volume = 0;
                 window.speechSynthesis.speak(primeUtterance);
-                window.speechSynthesis.resume();
             }
         };
 
@@ -101,7 +101,7 @@
         let voices = [];
         const loadVoices = () => {
             voices = window.speechSynthesis.getVoices();
-            if (voices.length > 0) console.log(`Voices loaded: ${voices.length}`);
+            if (voices.length > 0) console.log(`Voices available: ${voices.length}`);
         };
         if (window.speechSynthesis) {
             window.speechSynthesis.onvoiceschanged = loadVoices;
@@ -139,9 +139,8 @@
                         updateSwitch(res.state);
                         res.onchange = () => updateSwitch(res.state);
                     }).catch(() => {});
-                } else {
-                    // Fallback for browsers without Permissions API (e.g. Safari)
-                    if (localStorage.getItem('micPermissionPref') === 'true') updateSwitch('granted');
+                } else if (localStorage.getItem('micPermissionPref') === 'true') {
+                    updateSwitch('granted');
                 }
             } catch (e) {}
         }
@@ -167,7 +166,6 @@
                 initRecognition(); 
                 return true; 
             } catch(e) { 
-                console.error("Mic access denied:", e);
                 updateSwitch('denied'); 
                 return false; 
             } 
@@ -178,13 +176,9 @@
             try {
                 const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`;
                 const resp = await fetch(url);
-                if (!resp.ok) throw new Error('Translate API failed');
                 const data = await resp.json();
                 return data[0].map(s => s[0]).join('').trim();
-            } catch (e) { 
-                console.error("Translation error:", e);
-                return null; 
-            }
+            } catch (e) { return null; }
         }
 
         async function processWithGemini(text, sl, tl) {
@@ -196,47 +190,48 @@
                     body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
                 });
                 const data = await response.json();
-                const content = data.candidates[0].content.parts[0].text.replace(/```json|```/g, "").trim();
-                return JSON.parse(content);
-            } catch (e) { 
-                console.error("Gemini error:", e);
-                return null; 
-            }
+                const jsonText = data.candidates[0].content.parts[0].text.replace(/```json|```/g, "").trim();
+                return JSON.parse(jsonText);
+            } catch (e) { return null; }
         }
 
         async function playAudio(url) {
             return new Promise((resolve) => {
                 masterAudio.onended = () => { resolve(); };
-                masterAudio.onerror = (e) => { console.error("Audio play error:", e); resolve(); };
+                masterAudio.onerror = (e) => { console.error("Audio failed:", e); resolve(); };
                 masterAudio.src = url;
                 masterAudio.play().catch(e => {
-                    console.warn("Auto-play blocked, retrying with user interaction check...", e);
+                    console.error("Playback blocked:", e);
                     resolve();
                 });
             });
         }
 
         async function speakLogic(text, targetLang, natural) {
-            console.log(`Speaking: "${text}" [${targetLang}]`);
+            console.log("Speaking sequence started:", text);
             if (window.speechSynthesis) window.speechSynthesis.cancel();
             
             const apiKey = getApiKey();
-            // Priority 1: Gemini Natural Audio
+            // Gemini Natural Audio
             if (natural && apiKey) {
                 try {
                     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ contents: [{ parts: [{ text: `Speak naturally in ${targetLang==='my'?'Burmese':'English'}: ${text}` }] }], generationConfig: { responseMimeType: "audio/wav" } })
+                        body: JSON.stringify({ 
+                            contents: [{ parts: [{ text: `Speak naturally in ${targetLang==='my'?'Burmese':'English'}: ${text}` }] }],
+                            generationConfig: { responseMimeType: "audio/wav" } 
+                        })
                     });
                     const data = await response.json();
-                    if (data.candidates?.[0]?.content?.parts?.[0]?.inlineData) {
-                        const audioBlob = new Blob([Uint8Array.from(atob(data.candidates[0].content.parts[0].inlineData.data), c => c.charCodeAt(0))], { type: 'audio/wav' });
+                    const b64Data = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+                    if (b64Data) {
+                        const audioBlob = new Blob([Uint8Array.from(atob(b64Data), c => c.charCodeAt(0))], { type: 'audio/wav' });
                         const audioUrl = URL.createObjectURL(audioBlob);
                         await playAudio(audioUrl);
                         URL.revokeObjectURL(audioUrl);
                         return;
                     }
-                } catch (e) { console.error("Natural TTS failed:", e); }
+                } catch (e) { console.warn("Natural TTS fail", e); }
             }
 
             const segments = [];
@@ -250,16 +245,19 @@
 
             for (const seg of segments) {
                 try {
-                    // Priority 2: Microsoft Edge Neural
-                    const voice = seg.l === 'my' ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
-                    const tts = new UniversalEdgeTTS(seg.t, voice);
+                    console.log("Trying Edge TTS for segment:", seg.t);
+                    const voiceName = seg.l === 'my' ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
+                    // The library might use EdgeTTS constructor or UniversalEdgeTTS
+                    const ttsClass = window.UniversalEdgeTTS || window.EdgeTTS;
+                    if (!ttsClass) throw new Error("TTS Class not found");
+                    
+                    const tts = new ttsClass(seg.t, voiceName);
                     const audioBlob = await tts.synthesize();
                     const audioUrl = URL.createObjectURL(audioBlob);
                     await playAudio(audioUrl);
                     URL.revokeObjectURL(audioUrl);
                 } catch (e) {
-                    console.warn("Edge TTS failed, trying fallback...", e);
-                    // Priority 3: Web Speech API
+                    console.warn("Edge TTS fail, trying fallbacks...", e);
                     const bestVoice = voices.find(v => v.lang.startsWith(seg.l));
                     if (window.speechSynthesis && (bestVoice || voices.length > 0)) {
                         await new Promise(r => {
@@ -270,7 +268,6 @@
                             window.speechSynthesis.speak(ut);
                         });
                     } else {
-                        // Priority 4: Google TTS
                         await playAudio(`https://translate.google.com/translate_tts?ie=UTF-8&tl=${seg.l}&client=tw-ob&q=${encodeURIComponent(seg.t)}`);
                     }
                 }
@@ -295,10 +292,7 @@
                 }
             };
             recognition.onstart = () => { isRecording = true; isTransitioning = false; };
-            recognition.onerror = (e) => { 
-                console.error("Recognition error:", e);
-                isRecording = false; isTransitioning = false; updateUIState('ready'); 
-            };
+            recognition.onerror = () => { isRecording = false; isTransitioning = false; updateUIState('ready'); };
             recognition.onend = () => { if (isRecording) recognition.start(); };
         }
 
@@ -326,10 +320,7 @@
                 recognition.lang = lang; recognition.start(); 
                 updateUIState('listening', lang);
                 if (showTextSwitch.checked) transcription.innerHTML = '<div class="live-line">Listening...</div>';
-            } catch (e) { 
-                console.error("Start recording failed:", e);
-                isTransitioning = isRecording = false; updateUIState('ready'); 
-            }
+            } catch (e) { isTransitioning = isRecording = false; updateUIState('ready'); }
         }
 
         async function stopRecording() {
@@ -338,7 +329,6 @@
             const rawText = (finalBuffer + interimBuffer).trim();
             if (recognition) { recognition.onend = null; try { recognition.stop(); } catch(e){} }
             
-            console.log("Recorded text:", rawText);
             if (rawText) {
                 const isBurmeseSide = currentMicLang === 'my-MM';
                 const sl = isBurmeseSide ? 'my' : 'en', tl = isBurmeseSide ? 'en' : 'my';
@@ -351,8 +341,6 @@
                     const fMain = (typeof translated === 'object') ? translated.translated : translated;
                     renderFinalRoll(fSub, fMain);
                     await speakLogic(fMain, tl, naturalSwitch.checked);
-                } else {
-                    console.warn("No translation received.");
                 }
             }
             updateUIState('ready'); isTransitioning = false;
