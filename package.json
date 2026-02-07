@@ -1,0 +1,7 @@
+{
+  "name": "pyawlike",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "echo "window.ENV = { GEMINI_API_KEY: '$GEMINI_API_KEY' };" > config.js"
+  }
+}
