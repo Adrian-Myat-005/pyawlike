@@ -24,6 +24,13 @@ body {
     font-family: 'Inter', sans-serif;
     overflow: hidden;
     display: flex; justify-content: center; align-items: center;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+button, a, input, select, textarea, label {
+    -webkit-tap-highlight-color: transparent;
 }
 
 /* DEAD CENTER CONTAINER */
