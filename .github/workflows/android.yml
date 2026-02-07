@@ -10,12 +10,12 @@ jobs:
     steps:
       - uses: actions/checkout @v4
 
-      # --- SETUP ENVIRONMENT (The Perfect Combo) ---
+      # --- SETUP ENVIRONMENT ---
       - name: Setup Node 22 (Required for Cap v7)
         uses: actions/setup-node @v4
         with: { node-version: 22 }
 
-      - name: Setup Java 21 (Required for Android 15 builds)
+      - name: Setup Java 21 (Required for Android 15)
         uses: actions/setup-java @v4
         with: { distribution: 'zulu', java-version: '21' }
 
@@ -29,7 +29,6 @@ jobs:
       - name: Install Dependencies
         run: |
           if [ ! -f package.json ]; then npm init -y; fi
-          # Force install latest versions
           npm install @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest
 
       # --- INIT ANDROID ---
@@ -38,11 +37,21 @@ jobs:
           npx cap init "PyawLike" "com.pyawlike.app" --web-dir=www
           npx cap add android
 
-      # --- 🔥 THE GOD MODE FIX (Force Kotlin Version) 🔥 ---
+      # --- 🔥 STEP 1: INJECT MIC PERMISSIONS 🔥 ---
+      # This command finds the <application> tag and adds permissions right before it.
+      - name: Inject Permissions
+        run: |
+          cd android/app/src/main
+          # We insert RECORD_AUDIO and MODIFY_AUDIO_SETTINGS
+          sed -i 's/<application/<uses-permission android:name="android.permission.RECORD_AUDIO" \/>\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" \/>\n    <application/' AndroidManifest.xml
+          
+          # Print it just to be sure (optional, for logs)
+          cat AndroidManifest.xml
+
+      # --- 🔥 STEP 2: FIX KOTLIN CONFLICT 🔥 ---
       - name: Inject Resolution Strategy
         run: |
           cd android
-          # This forces the project to agree on ONE Kotlin version
           cat <<EOT >> build.gradle
           
           allprojects {
