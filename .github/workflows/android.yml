@@ -15,6 +15,7 @@ jobs:
         uses: actions/setup-node @v4
         with: { node-version: 22 }
 
+      # --- Use Java 21 ---
       - name: Setup Java 21
         uses: actions/setup-java @v4
         with: { distribution: 'zulu', java-version: '21' }
@@ -37,22 +38,62 @@ jobs:
           npx cap init "PyawLike" "com.pyawlike.app" --web-dir=www
           npx cap add android
 
-      # --- 🔥 PERMISSION INJECTION (SAFER METHOD) 🔥 ---
-      # We insert the permissions right after the <manifest> tag starts.
-      # This guarantees they are seen by Android.
-      - name: Inject Manifest Permissions
+      # --- 🔥 THE NUCLEAR MANIFEST OVERWRITE 🔥 ---
+      # We DELETE the auto-generated file and write our own with permissions HARDCODED.
+      - name: Overwrite AndroidManifest.xml
         run: |
           cd android/app/src/main
+          rm AndroidManifest.xml
           
-          # Insert permissions at line 3 (right after <manifest...>)
-          sed -i '3i <uses-permission android:name="android.permission.RECORD_AUDIO" />' AndroidManifest.xml
-          sed -i '3i <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />' AndroidManifest.xml
-          sed -i '3i <uses-permission android:name="android.permission.INTERNET" />' AndroidManifest.xml
+          # Write the new file with RECORD_AUDIO and INTERNET permissions
+          cat <<XML > AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="com.pyawlike.app">
+
+              <uses-permission android:name="android.permission.RECORD_AUDIO" />
+              <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+              <uses-permission android:name="android.permission.INTERNET" />
+              <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+              <application
+                  android:allowBackup="true"
+                  android:icon="@mipmap/ic_launcher"
+                  android:label="@string/app_name"
+                  android:roundIcon="@mipmap/ic_launcher_round"
+                  android:supportsRtl="true"
+                  android:theme="@style/AppTheme"
+                  android:usesCleartextTraffic="true">
+
+                  <activity
+                      android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
+                      android:name=".MainActivity"
+                      android:label="@string/title_activity_main"
+                      android:theme="@style/AppTheme.NoActionBarLaunch"
+                      android:launchMode="singleTask"
+                      android:exported="true">
+
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+
+                  </activity>
+
+                  <provider
+                      android:name="androidx.core.content.FileProvider"
+                      android:authorities="\${applicationId}.fileprovider"
+                      android:exported="false"
+                      android:grantUriPermissions="true">
+                      <meta-data
+                          android:name="android.support.FILE_PROVIDER_PATHS"
+                          android:resource="@xml/file_paths" />
+                  </provider>
+              </application>
+          </manifest>
+          XML
           
-          # Enable Cleartext Traffic (for local network/audio issues)
-          sed -i 's/android:allowBackup="true"/android:allowBackup="true" android:usesCleartextTraffic="true"/' AndroidManifest.xml
-          
-          # PRINT THE FILE to the build logs (so we can check if it worked)
+          # Print to verify
           cat AndroidManifest.xml
 
       # --- 🎨 INJECT ICON ---
@@ -93,5 +134,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact @v4
         with:
-          name: pyawlike-app-permission-fixed
+          name: pyawlike-app-fixed-manifest
           path: android/app/build/outputs/apk/debug/app-debug.apk
