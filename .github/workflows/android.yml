@@ -14,7 +14,6 @@ jobs:
         run: |
           mkdir www
           rsync -av . www --exclude www --exclude node_modules --exclude .git --exclude .github --exclude android
-          # 🔥 HARDCODED API KEY FROM YOUR FILE TO ENSURE IT WORKS 🔥
           echo 'window.ENV = { GEMINI_API_KEY: "AIzaSyCPrA6Mtf6YsuxY67H6GzAwlSItcdzMWRU" };' > www/config.js
 
       - name: Install Dependencies
@@ -71,4 +70,4 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
       - uses: actions/upload-artifact@v4
-        with: { name: pyawlike-perfect-final, path: android/app/build/outputs/apk/debug/app-debug.apk }
+        with: { name: pyawlike-debug-logger, path: android/app/build/outputs/apk/debug/app-debug.apk }
