@@ -1,4 +1,4 @@
-name: Final Super APK Build
+name: Final God Mode APK Build
 on:
   push:
     branches: [ main, master ]
@@ -8,48 +8,64 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout @v4
 
-      # --- SETUP ENVIRONMENT (UPDATED TO JAVA 21) ---
+      # --- SETUP ENVIRONMENT ---
       - name: Setup Node.js & Java
         uses: actions/setup-node @v4
         with: { node-version: 20 }
       - name: Setup Java
         uses: actions/setup-java @v4
-        with: 
-          distribution: 'zulu'
-          java-version: '21'   # <--- FIXED: Upgrade to Java 21
+        with: { distribution: 'zulu', java-version: '17' }
 
-      # --- MAGIC FOLDER TRICK ---
+      # --- PREPARE ASSETS ---
       - name: Prepare Web Assets
         run: |
           mkdir www
           rsync -av . www --exclude www --exclude node_modules --exclude .git --exclude .github --exclude android
 
-      # --- INSTALL & CONFIGURE CAPACITOR ---
-      - name: Install Capacitor & Android
+      # --- INSTALL CAPACITOR ---
+      - name: Install Dependencies
         run: |
           if [ ! -f package.json ]; then npm init -y; fi
-          
-          # Install Capacitor tools
-          npm install @capacitor/core @capacitor/cli @capacitor/android
+          # We use latest to get the best Android support
+          npm install @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest
 
-          # Initialize the App
-          npx cap init "VibeApp" "com.vibe.code" --web-dir=www
-
-          # Add Android Platform
+      # --- INIT ANDROID ---
+      - name: Initialize Android
+        run: |
+          npx cap init "PyawLike" "com.pyawlike.app" --web-dir=www
           npx cap add android
 
-      # --- BUILD THE APK ---
+      # --- 🔥 THE GOD MODE FIX (Force Kotlin Version) 🔥 ---
+      - name: Inject Resolution Strategy
+        run: |
+          cd android
+          
+          # This appends a rule to the root build.gradle to FORCE Kotlin 1.9.0
+          # This stops the "Duplicate Class" error by making everyone use the same version.
+          cat <<EOT >> build.gradle
+          
+          allprojects {
+              configurations.all {
+                  resolutionStrategy {
+                      force 'org.jetbrains.kotlin:kotlin-stdlib:1.9.0'
+                      force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.0'
+                  }
+              }
+          }
+          EOT
+
+      # --- BUILD ---
       - name: Build Debug APK
         run: |
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
 
-      # --- UPLOAD ARTIFACT ---
+      # --- UPLOAD ---
       - name: Upload APK
         uses: actions/upload-artifact @v4
         with:
-          name: vibe-app-final
+          name: pyawlike-app-perfect
           path: android/app/build/outputs/apk/debug/app-debug.apk

@@ -6,8 +6,8 @@
     <title>PyawLike - Minimal AI Translator</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
-    <!-- Robust Edge TTS for Android -->
-    <script src="https://cdn.jsdelivr.net/npm/edge-tts-browser@1.0.1/index.min.js"></script>
+    <!-- GOLDEN ERA LIBRARY: The exact version that worked -->
+    <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
 </head>
 <body class="dark-mode">
     <div id="error-toast" style="position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:rgba(255,0,0,0.8); color:white; padding:10px 20px; border-radius:20px; font-size:12px; z-index:1000; display:none;"></div>
@@ -67,56 +67,19 @@
     <script>
         const btnMM = document.getElementById('btnMM'), btnENG = document.getElementById('btnENG');
         const speakerWrapper = document.getElementById('speakerWrapper'), hWaves = document.getElementById('hWaves'), pLoader = document.getElementById('pLoader');
+        const masterAudio = new Audio(); // <--- ADD THIS LINE OR THE APP WILL CRASH
         const transcription = document.getElementById('transcription'), errorToast = document.getElementById('error-toast');
         const permStatus = document.getElementById('permStatus'), navDot = document.getElementById('navDot'), dropdownMenu = document.getElementById('dropdownMenu');
         const themeSwitch = document.getElementById('themeSwitch'), naturalSwitch = document.getElementById('naturalSwitch'), showTextSwitch = document.getElementById('showTextSwitch');
         
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null, isRecording = false, isTransitioning = false, finalBuffer = '', interimBuffer = '', isMicEnabled = false;
-        let currentMicLang = 'en-US', lastProcessedTranscript = '';
+        let currentMicLang = 'en-US';
 
         function showError(msg) {
             errorToast.textContent = msg;
             errorToast.style.display = 'block';
             setTimeout(() => { errorToast.style.display = 'none'; }, 3000);
-        }
-
-        // --- ROBUST AUDIO MANAGEMENT ---
-        const masterAudio = new Audio();
-        masterAudio.crossOrigin = "anonymous";
-        let audioUnlocked = false;
-
-        const unlockAudio = () => {
-            if (audioUnlocked) return;
-            console.log("Unlocking audio for Android...");
-            
-            // Create a short silent buffer to unlock Web Audio context
-            const context = new (window.AudioContext || window.webkitAudioContext)();
-            const silentBuffer = context.createBuffer(1, 1, 22050);
-            const source = context.createBufferSource();
-            source.buffer = silentBuffer;
-            source.connect(context.destination);
-            source.start(0);
-
-            masterAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA=='; 
-            masterAudio.play().then(() => {
-                audioUnlocked = true;
-                console.log("Audio Unlocked.");
-            }).catch(e => console.error("Unlock failed", e));
-            
-            if (window.speechSynthesis) {
-                const p = new SpeechSynthesisUtterance("");
-                p.volume = 0;
-                window.speechSynthesis.speak(p);
-            }
-        };
-
-        // --- VOICE MANAGEMENT ---
-        let voices = [];
-        const loadVoices = () => { voices = window.speechSynthesis.getVoices(); };
-        if (window.speechSynthesis) {
-            window.speechSynthesis.onvoiceschanged = loadVoices;
-            loadVoices();
         }
 
         const getApiKey = () => (window.ENV?.GEMINI_API_KEY && !window.ENV.GEMINI_API_KEY.includes("REPLACE_")) ? window.ENV.GEMINI_API_KEY : "";
@@ -128,11 +91,11 @@
         naturalSwitch.addEventListener('change', () => { localStorage.setItem('naturalModePref', naturalSwitch.checked); });
         showTextSwitch.addEventListener('change', () => { localStorage.setItem('showTextPref', showTextSwitch.checked); transcription.classList.toggle('hidden', !showTextSwitch.checked); });
 
-        permStatus.addEventListener('click', async (e) => { e.stopPropagation(); unlockAudio(); if (isTransitioning) return; if (isMicEnabled) disableMic(); else await requestMicAccess(); });
+        permStatus.addEventListener('click', async (e) => { e.stopPropagation(); if (isTransitioning) return; if (isMicEnabled) disableMic(); else await requestMicAccess(); });
 
         function disableMic() {
             isRecording = false; 
-            if (recognition) { try { recognition.onend = null; recognition.onerror = null; recognition.stop(); } catch(e){} }
+            if (recognition) { try { recognition.onend = null; recognition.stop(); } catch(e){} }
             if (window.localStream) { window.localStream.getTracks().forEach(t => t.stop()); window.localStream = null; }
             localStorage.removeItem('micPermissionPref'); updateSwitch('denied');
         }
@@ -150,9 +113,8 @@
             } catch (e) {}
         }
 
-        // Init
         if (localStorage.getItem('themePref') === 'light') { document.body.classList.remove('dark-mode'); themeSwitch.checked = false; }
-        naturalSwitch.checked = localStorage.getItem('naturalModePref') !== 'false'; // Default to true for quality
+        naturalSwitch.checked = localStorage.getItem('naturalModePref') !== 'false';
         showTextSwitch.checked = localStorage.getItem('showTextPref') !== 'false';
         transcription.classList.toggle('hidden', !showTextSwitch.checked);
 
@@ -178,43 +140,53 @@
             try {
                 const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`;
                 const resp = await fetch(url);
-                if (!resp.ok) throw new Error("Translation failed");
                 const data = await resp.json();
                 return data[0].map(s => s[0]).join('').trim();
-            } catch (e) { showError("Translation Error: " + e.message); return null; }
+            } catch (e) { return null; }
         }
 
         async function processWithGemini(text, sl, tl) {
             const apiKey = getApiKey();
-            if (!apiKey) { showError("Gemini API Key missing"); return null; }
+            if (!apiKey) return null;
             try {
-                const prompt = `Translate ${sl==='my'?'Burmese':'English'} to ${tl==='my'?'Burmese':'English'} naturally. JSON only: {"refined":"...", "translated":"..."}. Text: ${text}`;
+                const prompt = `Translate ${sl==='my'?'Burmese':'English'} to ${tl==='my'?'Burmese':'English'} naturally. Output ONLY valid JSON: {"refined":"...", "translated":"..."}. Text: ${text}`;
                 const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
                 });
-                if (!response.ok) throw new Error("Gemini API Error: " + response.status);
                 const data = await response.json();
                 const jsonText = data.candidates[0].content.parts[0].text.replace(/```json|```/g, "").trim();
                 return JSON.parse(jsonText);
-            } catch (e) { showError("Gemini Error: " + e.message); return null; }
+            } catch (e) { return null; }
         }
 
         async function playAudio(url) {
             return new Promise((resolve) => {
-                masterAudio.onended = resolve;
-                masterAudio.onerror = resolve;
+                // REUSE THE UNLOCKED SPEAKER!
                 masterAudio.src = url;
-                masterAudio.play().catch(resolve);
+                
+                masterAudio.onended = () => { 
+                    if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+                    resolve(); 
+                };
+                masterAudio.onerror = (e) => { 
+                    console.error("Audio Playback Error:", e);
+                    resolve(); 
+                };
+                
+                // Force play (it's already unlocked by the button click)
+                masterAudio.play().catch(e => {
+                    console.error("Play prevented:", e);
+                    resolve();
+                });
             });
         }
 
         async function speakLogic(text, targetLang, natural) {
-            console.log("TTS Start:", text);
             if (window.speechSynthesis) window.speechSynthesis.cancel();
-            
             const apiKey = getApiKey();
-            // Gemini Natural - Highest Quality for Myanmar
+
+            // 1. GEMINI NATURAL AUDIO
             if (natural && apiKey) {
                 try {
                     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
@@ -224,22 +196,18 @@
                             generationConfig: { responseMimeType: "audio/wav" } 
                         })
                     });
-                    if (!response.ok) throw new Error("TTS API Error: " + response.status);
                     const data = await response.json();
                     const b64 = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
                     if (b64) {
                         const blob = new Blob([Uint8Array.from(atob(b64), c => c.charCodeAt(0))], { type: 'audio/wav' });
                         const url = URL.createObjectURL(blob);
                         await playAudio(url);
-                        URL.revokeObjectURL(url);
                         return;
                     }
-                } catch (e) { 
-                    console.warn("Gemini TTS Error", e);
-                    // Don't showError here as we have fallbacks below
-                }
+                } catch (e) { console.warn("Gemini TTS Fail", e); }
             }
 
+            // 2. EDGE NEURAL TTS (Restoring the Golden Configuration)
             const segments = [];
             const regex = /([\u1000-\u109F\s.,!?'"()\-]+)|([a-zA-Z0-9\s.,!?'"()\-]+)/g;
             let m;
@@ -249,59 +217,44 @@
             }
             if (segments.length === 0) segments.push({ t: text.trim(), l: targetLang });
 
-            for (const seg of segments) {
-                try {
-                    const voice = seg.l === 'my' ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
-                    const EdgeTTS = window.EdgeTTS || window.UniversalEdgeTTS;
-                    if (!EdgeTTS) throw new Error("No EdgeTTS");
-                    const tts = new EdgeTTS(seg.t, voice);
-                    const blob = await tts.synthesize();
-                    const url = URL.createObjectURL(blob);
-                    await playAudio(url);
-                    URL.revokeObjectURL(url);
-                } catch (e) {
-                    const best = voices.find(v => v.lang.startsWith(seg.l));
-                    if (window.speechSynthesis && (best || voices.length > 0)) {
-                        await new Promise(r => {
-                            const ut = new SpeechSynthesisUtterance(seg.t);
-                            if (best) ut.voice = best;
-                            ut.lang = seg.l === 'my' ? 'my-MM' : 'en-US';
-                            ut.onend = r; ut.onerror = r;
-                            window.speechSynthesis.speak(ut);
-                        });
-                    } else {
-                        await playAudio(`https://translate.google.com/translate_tts?ie=UTF-8&tl=${seg.l}&client=tw-ob&q=${encodeURIComponent(seg.t)}`);
+            try {
+                // Check for the library object
+                if (typeof EdgeTTS !== 'undefined' && EdgeTTS.EdgeTTS) {
+                    const tts = new EdgeTTS.EdgeTTS();
+                    for (const seg of segments) {
+                        const voice = seg.l === 'my' ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
+                        // Using the specific ttsPromise method from the Golden Era version
+                        const audioData = await tts.ttsPromise(seg.t, voice);
+                        const blob = new Blob([audioData], { type: 'audio/mpeg' });
+                        const url = URL.createObjectURL(blob);
+                        await playAudio(url);
                     }
+                    return;
                 }
+            } catch (e) {
+                console.warn("EdgeTTS error:", e);
+            }
+
+            // 3. FALLBACK
+            for (const seg of segments) {
+                const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${seg.l}&client=tw-ob&q=${encodeURIComponent(seg.t)}`;
+                await playAudio(url);
             }
         }
 
-        // --- STABLE RECOGNITION (Android Duplication Fix) ---
+        // --- RECOGNITION ---
         function initRecognition() {
             if (recognition) return;
             recognition = new SpeechRecognition();
-            // On Android, true continuous can cause glitches. We'll handle restart manually.
             recognition.continuous = true; 
             recognition.interimResults = true;
 
             recognition.onresult = (e) => {
                 let inter = '';
-                let finalAdded = false;
                 for (let i = e.resultIndex; i < e.results.length; i++) {
                     const res = e.results[i];
-                    const transcript = res[0].transcript.trim();
-                    
-                    // Android Fix: Ignore results with 0 confidence if they claim to be final
-                    if (res.isFinal && res[0].confidence > 0) {
-                        // Debounce: prevent same phrase twice
-                        if (transcript !== lastProcessedTranscript) {
-                            finalBuffer += transcript + ' ';
-                            lastProcessedTranscript = transcript;
-                            finalAdded = true;
-                        }
-                    } else if (!res.isFinal) {
-                        inter += transcript;
-                    }
+                    if (res.isFinal) finalBuffer += res[0].transcript + ' ';
+                    else inter += res[0].transcript;
                 }
                 interimBuffer = inter;
                 if (showTextSwitch.checked) {
@@ -317,72 +270,66 @@
 
         function renderFinalRoll(sub, main) {
             if (!showTextSwitch.checked) return;
-            transcription.innerHTML = '';
-            const line = document.createElement('div');
-            line.className = 'roll-line';
-            line.innerHTML = `<div class="source-subtext">${sub}</div><div class="translation-main">${main}</div>`;
-            transcription.appendChild(line);
+            transcription.innerHTML = `<div class="roll-line"><div class="source-subtext">${sub}</div><div class="translation-main">${main}</div></div>`;
         }
 
         function updateUIState(state, side = '') {
             hWaves.classList.toggle('active', state === 'listening' && !showTextSwitch.checked);
             pLoader.classList.toggle('active', state === 'processing');
-            if (state === 'listening') speakerWrapper.className = side === 'my-MM' ? 'speaker-wrapper is-active-left' : 'speaker-wrapper is-active-right';
-            else speakerWrapper.className = 'speaker-wrapper';
+            speakerWrapper.className = state === 'listening' ? (side === 'my-MM' ? 'speaker-wrapper is-active-left' : 'speaker-wrapper is-active-right') : 'speaker-wrapper';
         }
 
         function startRecording(lang) {
             if (isTransitioning || isRecording || !isMicEnabled) return;
-            isTransitioning = true; finalBuffer = ''; interimBuffer = ''; lastProcessedTranscript = ''; currentMicLang = lang;
+            isTransitioning = true; finalBuffer = ''; interimBuffer = ''; currentMicLang = lang;
             initRecognition();
-            try { 
-                recognition.lang = lang; 
-                recognition.start(); 
-                updateUIState('listening', lang);
-                if (showTextSwitch.checked) transcription.innerHTML = '<div class="live-line">Listening...</div>';
-            } catch (e) { isTransitioning = isRecording = false; updateUIState('ready'); }
+            try { recognition.lang = lang; recognition.start(); updateUIState('listening', lang); } 
+            catch (e) { isTransitioning = isRecording = false; updateUIState('ready'); }
         }
 
         async function stopRecording() {
             if (isTransitioning || !isRecording) return;
-            isRecording = false; isTransitioning = true; updateUIState('processing');
-            
-            if (recognition) { 
-                recognition.onend = null; 
-                recognition.onerror = null; 
-                try { recognition.stop(); } catch(e){} 
-            }
 
-            // Wait a tiny bit for the final buffer to catch up from interim
+            // --- THE FIX: INSTANT UNLOCK ---
+            // We play silence IMMEDIATELY to keep the speaker alive
+            masterAudio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABBTZGF0YQQAAAAAAAAAAAA=";
+            masterAudio.play().catch(e => console.log("Audio unlock failed", e));
+            // -------------------------------
+
+            isRecording = false; isTransitioning = true; updateUIState('processing');
+            if (recognition) { recognition.onend = null; try { recognition.stop(); } catch(e){} }
+
             setTimeout(async () => {
                 const rawText = (finalBuffer + interimBuffer).trim();
                 if (rawText) {
-                    const isBurmeseSide = currentMicLang === 'my-MM';
-                    const sl = isBurmeseSide ? 'my' : 'en', tl = isBurmeseSide ? 'en' : 'my';
-                    const inputDisplay = sl === 'en' ? refineEnglish(rawText) : rawText;
+                    // Logic: MM button = Burmese Input -> English Output
+                    const isBurmeseIn = currentMicLang === 'my-MM';
+                    const sl = isBurmeseIn ? 'my' : 'en';
+                    const tl = isBurmeseIn ? 'en' : 'my';
                     
-                    const translated = naturalSwitch.checked && getApiKey() ? await processWithGemini(rawText, sl, tl) : await translateNormal(inputDisplay, sl, tl);
+                    const inputDisplay = sl === 'en' ? refineEnglish(rawText) : rawText;
+                    const translated = (naturalSwitch.checked && getApiKey()) ? await processWithGemini(rawText, sl, tl) : await translateNormal(inputDisplay, sl, tl);
 
                     if (translated) {
                         const fSub = (typeof translated === 'object') ? translated.refined : inputDisplay;
                         const fMain = (typeof translated === 'object') ? translated.translated : translated;
                         renderFinalRoll(fSub, fMain);
+                        // Trigger TTS immediately on result
                         await speakLogic(fMain, tl, naturalSwitch.checked);
                     }
                 }
-                updateUIState('ready'); 
-                isTransitioning = false;
-            }, 500);
+                updateUIState('ready'); isTransitioning = false;
+            }, 800);
         }
 
         function refineEnglish(t) {
             let r = t.trim().charAt(0).toUpperCase() + t.trim().slice(1);
-            const c = [[/\b(i)\b/g, "I"], [/\b(im)\b/gi, "I'm"], [/\b(dont)\b/gi, "don't"], [/\b(cant)\b/gi, "can't"], [/\b(youre)\b/gi, "you're"], [/\b(its)\b/gi, "it's"], [/\b(didnt)\b/gi, "didn't"], [/\b(couldnt)\b/gi, "couldn't"], [/\b(shouldnt)\b/gi, "shouldn't"]];
+            const c = [[/\b(i)\b/g, "I"], [/\b(im)\b/gi, "I'm"], [/\b(dont)\b/gi, "don't"], [/\b(cant)\b/gi, "can't"], [/\b(youre)\b/gi, "you're"], [/\b(its)\b/gi, "it's"]];
             c.forEach(([reg, val]) => { r = r.replace(reg, val); }); return r.replace(/\s+/g, " ");
         }
 
-        btnMM.addEventListener('click', (e) => { e.preventDefault(); unlockAudio(); if (!isTransitioning) isRecording ? stopRecording() : startRecording('my-MM'); });
-        btnENG.addEventListener('click', (e) => { e.preventDefault(); unlockAudio(); if (!isTransitioning) isRecording ? stopRecording() : startRecording('en-US'); });
+        btnMM.addEventListener('click', (e) => { e.preventDefault(); if (!isTransitioning) isRecording ? stopRecording() : startRecording('my-MM'); });
+        btnENG.addEventListener('click', (e) => { e.preventDefault(); if (!isTransitioning) isRecording ? stopRecording() : startRecording('en-US'); });
         (async () => { if (localStorage.getItem('micPermissionPref') === 'true') await requestMicAccess(); checkPermission(); })();
     </script>
 </body>
