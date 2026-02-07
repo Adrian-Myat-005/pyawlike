@@ -10,13 +10,14 @@ jobs:
     steps:
       - uses: actions/checkout @v4
 
-      # --- SETUP ENVIRONMENT ---
-      - name: Setup Node.js
+      # --- SETUP ENVIRONMENT (The Perfect Combo) ---
+      - name: Setup Node 22 (Required for Cap v7)
         uses: actions/setup-node @v4
-        with: { node-version: 20 }
-      - name: Setup Java
+        with: { node-version: 22 }
+
+      - name: Setup Java 21 (Required for Android 15 builds)
         uses: actions/setup-java @v4
-        with: { distribution: 'zulu', java-version: '17' }
+        with: { distribution: 'zulu', java-version: '21' }
 
       # --- PREPARE ASSETS ---
       - name: Prepare Web Assets
@@ -28,7 +29,7 @@ jobs:
       - name: Install Dependencies
         run: |
           if [ ! -f package.json ]; then npm init -y; fi
-          # We install specific versions to stay safe, but latest is fine with the fix below
+          # Force install latest versions
           npm install @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest
 
       # --- INIT ANDROID ---
@@ -37,14 +38,11 @@ jobs:
           npx cap init "PyawLike" "com.pyawlike.app" --web-dir=www
           npx cap add android
 
-      # --- 🔥 THE FIX: FORCE KOTLIN VERSION 🔥 ---
-      # This step injects a rule to FORCE the project to use Kotlin 1.9.0
-      # This solves the "Duplicate Class" error in your screenshot.
+      # --- 🔥 THE GOD MODE FIX (Force Kotlin Version) 🔥 ---
       - name: Inject Resolution Strategy
         run: |
           cd android
-          
-          # Append the fix to the bottom of build.gradle
+          # This forces the project to agree on ONE Kotlin version
           cat <<EOT >> build.gradle
           
           allprojects {
@@ -68,5 +66,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact @v4
         with:
-          name: pyawlike-app-perfect
+          name: pyawlike-app-final
           path: android/app/build/outputs/apk/debug/app-debug.apk
