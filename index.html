@@ -72,6 +72,42 @@
         let recognition = null, isRecording = false, isTransitioning = false, finalBuffer = '', interimBuffer = '', isMicEnabled = false;
         let currentMicLang = 'en-US', activeAudio = null;
 
+        // --- MOBILE AUDIO UNLOCK STRATEGY ---
+        let audioUnlocked = false;
+        const unlockAudio = () => {
+            if (audioUnlocked) return;
+            
+            // 1. Unlock Web Audio API (for Audio objects)
+            const silentAudio = new Audio();
+            silentAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA=='; 
+            silentAudio.play().then(() => {
+                audioUnlocked = true;
+                silentAudio.pause();
+            }).catch(e => console.warn("Audio unlock failed:", e));
+
+            // 2. Unlock Web Speech API (speechSynthesis)
+            if (window.speechSynthesis) {
+                const primeUtterance = new SpeechSynthesisUtterance("");
+                primeUtterance.volume = 0;
+                window.speechSynthesis.speak(primeUtterance);
+                // Some browsers need a cancel/resume cycle
+                window.speechSynthesis.pause();
+                window.speechSynthesis.resume();
+            }
+        };
+
+        // --- VOICE MANAGEMENT (Android/iOS fix) ---
+        let voices = [];
+        const loadVoices = () => {
+            voices = window.speechSynthesis.getVoices();
+            // Optional: Log to console to debug voice availability on mobile
+            if (voices.length > 0) console.log(`Loaded ${voices.length} voices.`);
+        };
+        if (window.speechSynthesis) {
+            window.speechSynthesis.onvoiceschanged = loadVoices;
+            loadVoices();
+        }
+
         const getApiKey = () => (window.ENV?.GEMINI_API_KEY && !window.ENV.GEMINI_API_KEY.includes("REPLACE_")) ? window.ENV.GEMINI_API_KEY : "";
 
         // UI Interactions
@@ -81,12 +117,26 @@
         naturalSwitch.addEventListener('change', () => { localStorage.setItem('naturalModePref', naturalSwitch.checked); });
         showTextSwitch.addEventListener('change', () => { localStorage.setItem('showTextPref', showTextSwitch.checked); transcription.classList.toggle('hidden', !showTextSwitch.checked); });
 
-        permStatus.addEventListener('click', async (e) => { e.stopPropagation(); if (isTransitioning) return; if (isMicEnabled) disableMic(); else await requestMicAccess(); });
+        permStatus.addEventListener('click', async (e) => { 
+            e.stopPropagation(); 
+            unlockAudio();
+            if (isTransitioning) return; 
+            if (isMicEnabled) disableMic(); else await requestMicAccess(); 
+        });
 
         function disableMic() {
             isRecording = false; if (recognition) { try { recognition.onend = null; recognition.stop(); } catch(e){} }
             if (window.localStream) { window.localStream.getTracks().forEach(t => t.stop()); window.localStream = null; }
             localStorage.removeItem('micPermissionPref'); updateSwitch('denied');
+        }
+
+        function checkPermission() {
+            if (navigator.permissions && navigator.permissions.query) {
+                navigator.permissions.query({ name: 'microphone' }).then(res => {
+                    updateSwitch(res.state);
+                    res.onchange = () => updateSwitch(res.state);
+                }).catch(() => {});
+            }
         }
 
         // Init
@@ -103,6 +153,7 @@
             try {
                 const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`;
                 const resp = await fetch(url);
+                if (!resp.ok) throw new Error('Translate API failed');
                 const data = await resp.json();
                 return data[0].map(s => s[0]).join('').trim();
             } catch (e) { return null; }
@@ -122,8 +173,11 @@
         }
 
         async function speakLogic(text, targetLang, natural) {
-            if (activeAudio) { activeAudio.pause(); activeAudio.src = ""; }
+            if (activeAudio) { try { activeAudio.pause(); activeAudio.src = ""; } catch(e){} }
+            if (window.speechSynthesis) window.speechSynthesis.cancel();
+            
             const apiKey = getApiKey();
+            // Priority 1: Gemini Natural Audio
             if (natural && apiKey) {
                 try {
                     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
@@ -135,11 +189,13 @@
                         const audioBlob = new Blob([Uint8Array.from(atob(data.candidates[0].content.parts[0].inlineData.data), c => c.charCodeAt(0))], { type: 'audio/wav' });
                         const audioUrl = URL.createObjectURL(audioBlob);
                         const a = new Audio(audioUrl); activeAudio = a;
-                        await new Promise(r => { a.onended = () => { URL.revokeObjectURL(audioUrl); r(); }; a.play(); });
+                        await new Promise(r => { a.onended = () => { URL.revokeObjectURL(audioUrl); r(); }; a.play().catch(r); });
                         return;
                     }
                 } catch (e) {}
             }
+
+            // Segmented Logic for mixed language support
             const segments = [];
             const regex = /([\u1000-\u109F\s.,!?'"()\-]+)|([a-zA-Z0-9\s.,!?'"()\-]+)/g;
             let m;
@@ -148,8 +204,10 @@
                 else if (m[2]?.trim()) segments.push({ t: m[2].trim(), l: 'en' });
             }
             if (segments.length === 0) segments.push({ t: text.trim(), l: targetLang });
+
             for (const seg of segments) {
                 try {
+                    // Priority 2: Microsoft Edge Neural (via library)
                     const voice = seg.l === 'my' ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
                     const tts = new UniversalEdgeTTS(seg.t, voice);
                     const audioBlob = await tts.synthesize();
@@ -157,12 +215,25 @@
                     const a = new Audio(audioUrl); activeAudio = a;
                     await new Promise(r => { a.onended = () => { URL.revokeObjectURL(audioUrl); r(); }; a.play().catch(r); });
                 } catch (e) {
-                    await new Promise((resolve) => {
-                        const a = new Audio(`https://translate.google.com/translate_tts?ie=UTF-8&tl=${seg.l}&client=tw-ob&q=${encodeURIComponent(seg.t)}`);
-                        a.preload = 'auto'; activeAudio = a;
-                        a.onended = () => { a.src = ""; resolve(); };
-                        a.onerror = resolve; a.play().catch(resolve);
-                    });
+                    // Priority 3: Web Speech API (Native Fallback)
+                    const bestVoice = voices.find(v => v.lang.startsWith(seg.l));
+                    if (window.speechSynthesis && (bestVoice || voices.length > 0)) {
+                        await new Promise(r => {
+                            const ut = new SpeechSynthesisUtterance(seg.t);
+                            if (bestVoice) ut.voice = bestVoice;
+                            ut.lang = seg.l === 'my' ? 'my-MM' : 'en-US';
+                            ut.onend = r; ut.onerror = r;
+                            window.speechSynthesis.speak(ut);
+                        });
+                    } else {
+                        // Priority 4: Google TTS (Legacy Fallback)
+                        await new Promise((resolve) => {
+                            const a = new Audio(`https://translate.google.com/translate_tts?ie=UTF-8&tl=${seg.l}&client=tw-ob&q=${encodeURIComponent(seg.t)}`);
+                            a.preload = 'auto'; activeAudio = a;
+                            a.onended = () => { a.src = ""; resolve(); };
+                            a.onerror = resolve; a.play().catch(resolve);
+                        });
+                    }
                 }
             }
         }
@@ -245,8 +316,8 @@
             c.forEach(([reg, val]) => { r = r.replace(reg, val); }); return r.replace(/\s+/g, " ");
         }
 
-        btnMM.addEventListener('click', (e) => { e.preventDefault(); if (!isTransitioning) isRecording ? stopRecording() : startRecording('my-MM'); });
-        btnENG.addEventListener('click', (e) => { e.preventDefault(); if (!isTransitioning) isRecording ? stopRecording() : startRecording('en-US'); });
+        btnMM.addEventListener('click', (e) => { e.preventDefault(); unlockAudio(); if (!isTransitioning) isRecording ? stopRecording() : startRecording('my-MM'); });
+        btnENG.addEventListener('click', (e) => { e.preventDefault(); unlockAudio(); if (!isTransitioning) isRecording ? stopRecording() : startRecording('en-US'); });
         (async () => { if (localStorage.getItem('micPermissionPref') === 'true') await requestMicAccess(); checkPermission(); })();
     </script>
 </body>
