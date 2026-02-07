@@ -6,7 +6,7 @@
     <title>PyawLike - Minimal AI Translator</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
-    <!-- High-quality Edge TTS browser implementation -->
+    <!-- Robust Edge TTS for Android -->
     <script src="https://cdn.jsdelivr.net/npm/edge-tts-browser@1.0.1/index.min.js"></script>
 </head>
 <body class="dark-mode">
@@ -27,14 +27,14 @@
         <div class="menu-item">
             <span>NATURAL MODE</span>
             <label class="switch small-switch">
-                <input type="checkbox" id="naturalSwitch">
+                <input type="checkbox" id="naturalSwitch" checked>
                 <span class="slider"></span>
             </label>
         </div>
         <div class="menu-item">
             <span>SHOW TEXT</span>
             <label class="switch small-switch">
-                <input type="checkbox" id="showTextSwitch">
+                <input type="checkbox" id="showTextSwitch" checked>
                 <span class="slider"></span>
             </label>
         </div>
@@ -71,7 +71,7 @@
         
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null, isRecording = false, isTransitioning = false, finalBuffer = '', interimBuffer = '', isMicEnabled = false;
-        let currentMicLang = 'en-US';
+        let currentMicLang = 'en-US', lastProcessedTranscript = '';
 
         // --- ROBUST AUDIO MANAGEMENT ---
         const masterAudio = new Audio();
@@ -80,26 +80,23 @@
 
         const unlockAudio = () => {
             if (audioUnlocked) return;
-            console.log("Unlocking audio engines...");
-            
+            console.log("Unlocking audio for Android...");
             masterAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA=='; 
             masterAudio.play().then(() => {
                 audioUnlocked = true;
-                console.log("Audio context unlocked.");
-            }).catch(e => console.warn("Audio unlock failed:", e));
-
+                console.log("Audio Unlocked.");
+            }).catch(() => {});
+            
             if (window.speechSynthesis) {
-                const primeUtterance = new SpeechSynthesisUtterance("");
-                primeUtterance.volume = 0;
-                window.speechSynthesis.speak(primeUtterance);
+                const p = new SpeechSynthesisUtterance("");
+                p.volume = 0;
+                window.speechSynthesis.speak(p);
             }
         };
 
         // --- VOICE MANAGEMENT ---
         let voices = [];
-        const loadVoices = () => {
-            voices = window.speechSynthesis.getVoices();
-        };
+        const loadVoices = () => { voices = window.speechSynthesis.getVoices(); };
         if (window.speechSynthesis) {
             window.speechSynthesis.onvoiceschanged = loadVoices;
             loadVoices();
@@ -114,19 +111,13 @@
         naturalSwitch.addEventListener('change', () => { localStorage.setItem('naturalModePref', naturalSwitch.checked); });
         showTextSwitch.addEventListener('change', () => { localStorage.setItem('showTextPref', showTextSwitch.checked); transcription.classList.toggle('hidden', !showTextSwitch.checked); });
 
-        permStatus.addEventListener('click', async (e) => { 
-            e.stopPropagation(); 
-            unlockAudio();
-            if (isTransitioning) return; 
-            if (isMicEnabled) disableMic(); else await requestMicAccess(); 
-        });
+        permStatus.addEventListener('click', async (e) => { e.stopPropagation(); unlockAudio(); if (isTransitioning) return; if (isMicEnabled) disableMic(); else await requestMicAccess(); });
 
         function disableMic() {
             isRecording = false; 
-            if (recognition) { try { recognition.onend = null; recognition.stop(); } catch(e){} }
+            if (recognition) { try { recognition.onend = null; recognition.onerror = null; recognition.stop(); } catch(e){} }
             if (window.localStream) { window.localStream.getTracks().forEach(t => t.stop()); window.localStream = null; }
-            localStorage.removeItem('micPermissionPref'); 
-            updateSwitch('denied');
+            localStorage.removeItem('micPermissionPref'); updateSwitch('denied');
         }
 
         function checkPermission() {
@@ -144,8 +135,8 @@
 
         // Init
         if (localStorage.getItem('themePref') === 'light') { document.body.classList.remove('dark-mode'); themeSwitch.checked = false; }
-        naturalSwitch.checked = localStorage.getItem('naturalModePref') === 'true';
-        showTextSwitch.checked = localStorage.getItem('showTextPref') === 'true';
+        naturalSwitch.checked = localStorage.getItem('naturalModePref') !== 'false'; // Default to true for quality
+        showTextSwitch.checked = localStorage.getItem('showTextPref') !== 'false';
         transcription.classList.toggle('hidden', !showTextSwitch.checked);
 
         function updateSwitch(state) { 
@@ -162,10 +153,7 @@
                 updateSwitch('granted'); 
                 initRecognition(); 
                 return true; 
-            } catch(e) { 
-                updateSwitch('denied'); 
-                return false; 
-            } 
+            } catch(e) { updateSwitch('denied'); return false; } 
         }
 
         // --- ENGINES ---
@@ -194,22 +182,19 @@
 
         async function playAudio(url) {
             return new Promise((resolve) => {
-                masterAudio.onended = () => { resolve(); };
-                masterAudio.onerror = (e) => { console.error("Audio error:", e); resolve(); };
+                masterAudio.onended = resolve;
+                masterAudio.onerror = resolve;
                 masterAudio.src = url;
-                masterAudio.play().catch(e => {
-                    console.warn("Playback blocked or failed:", e);
-                    resolve();
-                });
+                masterAudio.play().catch(resolve);
             });
         }
 
         async function speakLogic(text, targetLang, natural) {
-            console.log("Speaking:", text);
+            console.log("TTS Start:", text);
             if (window.speechSynthesis) window.speechSynthesis.cancel();
             
             const apiKey = getApiKey();
-            // 1. Natural Mode (Gemini 2.0 Flash Audio - Premium Quality)
+            // Gemini Natural - Highest Quality for Myanmar
             if (natural && apiKey) {
                 try {
                     const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
@@ -220,19 +205,17 @@
                         })
                     });
                     const data = await response.json();
-                    const b64Data = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-                    if (b64Data) {
-                        console.log("Playing Gemini Natural Audio...");
-                        const audioBlob = new Blob([Uint8Array.from(atob(b64Data), c => c.charCodeAt(0))], { type: 'audio/wav' });
-                        const audioUrl = URL.createObjectURL(audioBlob);
-                        await playAudio(audioUrl);
-                        URL.revokeObjectURL(audioUrl);
+                    const b64 = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+                    if (b64) {
+                        const blob = new Blob([Uint8Array.from(atob(b64), c => c.charCodeAt(0))], { type: 'audio/wav' });
+                        const url = URL.createObjectURL(blob);
+                        await playAudio(url);
+                        URL.revokeObjectURL(url);
                         return;
                     }
-                } catch (e) { console.error("Natural Mode failed:", e); }
+                } catch (e) { console.warn("Gemini TTS Error", e); }
             }
 
-            // Segment text for high-quality Edge TTS
             const segments = [];
             const regex = /([\u1000-\u109F\s.,!?'"()\-]+)|([a-zA-Z0-9\s.,!?'"()\-]+)/g;
             let m;
@@ -244,48 +227,57 @@
 
             for (const seg of segments) {
                 try {
-                    // 2. Microsoft Edge Neural (High-Quality fallback)
-                    const voiceName = seg.l === 'my' ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
-                    console.log(`Trying Edge Neural: ${voiceName}`);
-                    
+                    const voice = seg.l === 'my' ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
                     const EdgeTTS = window.EdgeTTS || window.UniversalEdgeTTS;
-                    if (!EdgeTTS) throw new Error("Edge TTS Library not found");
-                    
-                    const tts = new EdgeTTS(seg.t, voiceName);
-                    const audioBlob = await tts.synthesize();
-                    const audioUrl = URL.createObjectURL(audioBlob);
-                    await playAudio(audioUrl);
-                    URL.revokeObjectURL(audioUrl);
+                    if (!EdgeTTS) throw new Error("No EdgeTTS");
+                    const tts = new EdgeTTS(seg.t, voice);
+                    const blob = await tts.synthesize();
+                    const url = URL.createObjectURL(blob);
+                    await playAudio(url);
+                    URL.revokeObjectURL(url);
                 } catch (e) {
-                    console.warn("Edge Neural failed, trying system voice:", e);
-                    // 3. System Web Speech API
-                    const bestVoice = voices.find(v => v.lang.startsWith(seg.l));
-                    if (window.speechSynthesis && (bestVoice || voices.length > 0)) {
+                    const best = voices.find(v => v.lang.startsWith(seg.l));
+                    if (window.speechSynthesis && (best || voices.length > 0)) {
                         await new Promise(r => {
                             const ut = new SpeechSynthesisUtterance(seg.t);
-                            if (bestVoice) ut.voice = bestVoice;
+                            if (best) ut.voice = best;
                             ut.lang = seg.l === 'my' ? 'my-MM' : 'en-US';
                             ut.onend = r; ut.onerror = r;
                             window.speechSynthesis.speak(ut);
                         });
                     } else {
-                        // 4. Legacy Google TTS (Last resort)
                         await playAudio(`https://translate.google.com/translate_tts?ie=UTF-8&tl=${seg.l}&client=tw-ob&q=${encodeURIComponent(seg.t)}`);
                     }
                 }
             }
         }
 
-        // --- STABLE RECOGNITION ---
+        // --- STABLE RECOGNITION (Android Duplication Fix) ---
         function initRecognition() {
             if (recognition) return;
             recognition = new SpeechRecognition();
-            recognition.continuous = true; recognition.interimResults = true;
+            // On Android, true continuous can cause glitches. We'll handle restart manually.
+            recognition.continuous = true; 
+            recognition.interimResults = true;
+
             recognition.onresult = (e) => {
                 let inter = '';
+                let finalAdded = false;
                 for (let i = e.resultIndex; i < e.results.length; i++) {
-                    if (e.results[i].isFinal) finalBuffer += e.results[i][0].transcript + ' ';
-                    else inter += e.results[i][0].transcript;
+                    const res = e.results[i];
+                    const transcript = res[0].transcript.trim();
+                    
+                    // Android Fix: Ignore results with 0 confidence if they claim to be final
+                    if (res.isFinal && res[0].confidence > 0) {
+                        // Debounce: prevent same phrase twice
+                        if (transcript !== lastProcessedTranscript) {
+                            finalBuffer += transcript + ' ';
+                            lastProcessedTranscript = transcript;
+                            finalAdded = true;
+                        }
+                    } else if (!res.isFinal) {
+                        inter += transcript;
+                    }
                 }
                 interimBuffer = inter;
                 if (showTextSwitch.checked) {
@@ -293,9 +285,10 @@
                     line.textContent = finalBuffer + interimBuffer;
                 }
             };
+
             recognition.onstart = () => { isRecording = true; isTransitioning = false; };
             recognition.onerror = () => { isRecording = false; isTransitioning = false; updateUIState('ready'); };
-            recognition.onend = () => { if (isRecording) recognition.start(); };
+            recognition.onend = () => { if (isRecording) { try { recognition.start(); } catch(e){} } };
         }
 
         function renderFinalRoll(sub, main) {
@@ -316,10 +309,11 @@
 
         function startRecording(lang) {
             if (isTransitioning || isRecording || !isMicEnabled) return;
-            isTransitioning = true; finalBuffer = ''; interimBuffer = ''; currentMicLang = lang;
+            isTransitioning = true; finalBuffer = ''; interimBuffer = ''; lastProcessedTranscript = ''; currentMicLang = lang;
             initRecognition();
             try { 
-                recognition.lang = lang; recognition.start(); 
+                recognition.lang = lang; 
+                recognition.start(); 
                 updateUIState('listening', lang);
                 if (showTextSwitch.checked) transcription.innerHTML = '<div class="live-line">Listening...</div>';
             } catch (e) { isTransitioning = isRecording = false; updateUIState('ready'); }
@@ -328,24 +322,33 @@
         async function stopRecording() {
             if (isTransitioning || !isRecording) return;
             isRecording = false; isTransitioning = true; updateUIState('processing');
-            const rawText = (finalBuffer + interimBuffer).trim();
-            if (recognition) { recognition.onend = null; try { recognition.stop(); } catch(e){} }
             
-            if (rawText) {
-                const isBurmeseSide = currentMicLang === 'my-MM';
-                const sl = isBurmeseSide ? 'my' : 'en', tl = isBurmeseSide ? 'en' : 'my';
-                const inputDisplay = sl === 'en' ? refineEnglish(rawText) : rawText;
-                
-                const translated = naturalSwitch.checked && getApiKey() ? await processWithGemini(rawText, sl, tl) : await translateNormal(inputDisplay, sl, tl);
-
-                if (translated) {
-                    const fSub = (typeof translated === 'object') ? translated.refined : inputDisplay;
-                    const fMain = (typeof translated === 'object') ? translated.translated : translated;
-                    renderFinalRoll(fSub, fMain);
-                    await speakLogic(fMain, tl, naturalSwitch.checked);
-                }
+            if (recognition) { 
+                recognition.onend = null; 
+                recognition.onerror = null; 
+                try { recognition.stop(); } catch(e){} 
             }
-            updateUIState('ready'); isTransitioning = false;
+
+            // Wait a tiny bit for the final buffer to catch up from interim
+            setTimeout(async () => {
+                const rawText = (finalBuffer + interimBuffer).trim();
+                if (rawText) {
+                    const isBurmeseSide = currentMicLang === 'my-MM';
+                    const sl = isBurmeseSide ? 'my' : 'en', tl = isBurmeseSide ? 'en' : 'my';
+                    const inputDisplay = sl === 'en' ? refineEnglish(rawText) : rawText;
+                    
+                    const translated = naturalSwitch.checked && getApiKey() ? await processWithGemini(rawText, sl, tl) : await translateNormal(inputDisplay, sl, tl);
+
+                    if (translated) {
+                        const fSub = (typeof translated === 'object') ? translated.refined : inputDisplay;
+                        const fMain = (typeof translated === 'object') ? translated.translated : translated;
+                        renderFinalRoll(fSub, fMain);
+                        await speakLogic(fMain, tl, naturalSwitch.checked);
+                    }
+                }
+                updateUIState('ready'); 
+                isTransitioning = false;
+            }, 500);
         }
 
         function refineEnglish(t) {
