@@ -6,6 +6,7 @@
     <title>PyawLike - Golden Native AI</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
 </head>
 <body class="dark-mode">
     <div id="error-toast" style="position:fixed; bottom:80px; left:50%; transform:translateX(-50%); background:rgba(255,50,50,0.9); color:white; padding:12px 24px; border-radius:30px; font-size:14px; z-index:2000; display:none; font-weight:bold; box-shadow: 0 5px 20px rgba(0,0,0,0.3);"></div>
@@ -48,6 +49,7 @@
         
         // REUSABLE AUDIO PLAYER
         const masterAudio = new Audio();
+        let watchdogTimer = null; // The safety timer
         
         let isRecording = false, isTransitioning = false, finalBuffer = '', currentMicLang = 'en-US';
         const NativeSpeech = window.Capacitor ? Capacitor.Plugins.SpeechRecognition : null;
@@ -69,9 +71,23 @@
         }
         function updateSwitch(active) { permStatus.textContent = active ? 'ON' : 'OFF'; permStatus.classList.toggle('active', active); }
 
+        // --- 🛡️ WATCHDOG (Prevents Getting Stuck) ---
+        function startWatchdog() {
+            stopWatchdog();
+            watchdogTimer = setTimeout(() => {
+                if (isTransitioning) {
+                    showError("Resetting (Took too long)");
+                    resetUI();
+                }
+            }, 15000); // 15 seconds max
+        }
+        function stopWatchdog() { clearTimeout(watchdogTimer); }
+
         // --- 🧠 THE BRAIN: TRANSLATION ---
         async function processTranslation(text) {
-            if (!text || text.trim().length < 1) return;
+            startWatchdog(); // Start the safety timer
+            
+            if (!text || text.trim().length < 1) { resetUI(); return; }
             const isBurmeseIn = currentMicLang === 'my-MM';
             const sl = isBurmeseIn ? 'my' : 'en';
             const tl = isBurmeseIn ? 'en' : 'my';
@@ -93,7 +109,7 @@
                     const result = JSON.parse(jsonText);
 
                     updateDisplay(result.refined, result.translated);
-                    await speakNatural(result.translated, tl);
+                    await speakLogic(result.translated, tl, true);
                     return;
                 } catch (e) { console.log("Gemini Fail, Fallback"); }
             }
@@ -106,45 +122,71 @@
                 const translated = data[0].map(s => s[0]).join('').trim();
                 
                 updateDisplay(text, translated);
-                await speakStandard(translated, tl);
+                await speakLogic(translated, tl, false);
             } catch (e) { showError("Net Error"); resetUI(); }
         }
 
         // --- 🗣️ THE VOICE: TTS ---
-        async function speakNatural(text, lang) {
+        async function speakLogic(text, lang, natural) {
+            // 1. Try Gemini Audio (If Natural)
+            if (natural) {
+                try {
+                    const apiKey = window.ENV?.GEMINI_API_KEY;
+                    const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ 
+                            contents: [{ parts: [{ text: `Speak naturally in ${lang==='my'?'Burmese':'English'}: ${text}` }] }],
+                            generationConfig: { responseMimeType: "audio/wav" } 
+                        })
+                    });
+                    const data = await resp.json();
+                    const b64 = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+                    if (b64) {
+                        const blob = new Blob([Uint8Array.from(atob(b64), c => c.charCodeAt(0))], { type: 'audio/wav' });
+                        await playBlob(blob);
+                        return;
+                    }
+                } catch (e) {}
+            }
+
+            // 2. Try Edge TTS (Best Free)
             try {
-                const apiKey = window.ENV?.GEMINI_API_KEY;
-                const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
-                    method: 'POST', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ 
-                        contents: [{ parts: [{ text: `Speak naturally in ${lang==='my'?'Burmese':'English'}: ${text}` }] }],
-                        generationConfig: { responseMimeType: "audio/wav" } 
-                    })
-                });
-                const data = await resp.json();
-                const b64 = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-                if (b64) {
-                    const blob = new Blob([Uint8Array.from(atob(b64), c => c.charCodeAt(0))], { type: 'audio/wav' });
-                    const url = URL.createObjectURL(blob);
-                    masterAudio.src = url;
-                    masterAudio.play();
-                } else { await speakStandard(text, lang); }
-            } catch (e) { await speakStandard(text, lang); }
+                const voice = lang === 'my' ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
+                if (typeof EdgeTTS !== 'undefined' && EdgeTTS.EdgeTTS) {
+                    const tts = new EdgeTTS.EdgeTTS();
+                    await tts.speak({ text: text, voice: voice });
+                    // EdgeTTS plays itself, we just wait a bit or listen for events if possible
+                    // Since the library handles playback, we give it a safe delay then reset
+                    setTimeout(resetUI, (text.length * 100) + 1000); 
+                    return;
+                }
+            } catch(e) {}
+
+            // 3. Fallback to Google TTS
+            const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${lang}&client=tw-ob&q=${encodeURIComponent(text)}`;
+            masterAudio.src = url; 
+            await playPromise(masterAudio);
         }
 
-        async function speakStandard(text, lang) {
-            // 1. Try Native Android TTS (Best Free/Offline)
-            if ('speechSynthesis' in window) {
-                window.speechSynthesis.cancel();
-                const utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = lang === 'my' ? 'my-MM' : 'en-US';
-                // Android "Speech Services by Google" provides high quality here
-                window.speechSynthesis.speak(utterance);
-                return;
-            }
-            // 2. Fallback to Google Network TTS
-            const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${lang}&client=tw-ob&q=${encodeURIComponent(text)}`;
-            masterAudio.src = url; masterAudio.play();
+        // Helper: Play Audio with Timeout Safety
+        function playBlob(blob) {
+            const url = URL.createObjectURL(blob);
+            masterAudio.src = url;
+            return playPromise(masterAudio);
+        }
+
+        function playPromise(audioObj) {
+            return new Promise(resolve => {
+                const safeResolve = () => { stopWatchdog(); resolve(); resetUI(); };
+                
+                audioObj.onended = safeResolve;
+                audioObj.onerror = safeResolve;
+                
+                audioObj.play().catch(safeResolve);
+                
+                // FORCE RESET if audio hangs for > 10 seconds
+                setTimeout(safeResolve, 10000); 
+            });
         }
 
         // --- RECORDING ---
@@ -184,10 +226,10 @@
         }
 
         // --- HELPERS ---
-        function updateDisplay(sub, main) { transcription.innerHTML = `<div class="roll-line"><div class="source-subtext">${sub}</div><div class="translation-main">${main}</div></div>`; resetUI(); }
+        function updateDisplay(sub, main) { transcription.innerHTML = `<div class="roll-line"><div class="source-subtext">${sub}</div><div class="translation-main">${main}</div></div>`; }
         function updateLiveText(t) { finalBuffer = t; if(document.getElementById('showTextSwitch').checked) transcription.innerHTML = `<div class="live-line">${t}</div>`; }
         function updateUIState(s, l) { hWaves.classList.toggle('active', s==='listening'); pLoader.classList.toggle('active', s==='processing'); speakerWrapper.className = s==='listening'?(l==='my-MM'?'speaker-wrapper is-active-left':'speaker-wrapper is-active-right'):'speaker-wrapper'; }
-        function resetUI() { isRecording=false; isTransitioning=false; updateUIState('ready'); }
+        function resetUI() { stopWatchdog(); isRecording=false; isTransitioning=false; updateUIState('ready'); }
         btnMM.addEventListener('mousedown', (e) => { e.preventDefault(); if(!isTransitioning) isRecording ? stopRecording() : startRecording('my-MM'); });
         btnENG.addEventListener('mousedown', (e) => { e.preventDefault(); if(!isTransitioning) isRecording ? stopRecording() : startRecording('en-US'); });
         document.getElementById('navDot').addEventListener('click', (e)=>{e.stopPropagation(); document.getElementById('dropdownMenu').classList.toggle('active');});

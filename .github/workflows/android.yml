@@ -14,7 +14,7 @@ jobs:
         run: |
           mkdir www
           rsync -av . www --exclude www --exclude node_modules --exclude .git --exclude .github --exclude android
-          # 🔥 INJECT YOUR KEY HERE 🔥
+          # 🔥 HARDCODED API KEY FROM YOUR FILE TO ENSURE IT WORKS 🔥
           echo 'window.ENV = { GEMINI_API_KEY: "AIzaSyCPrA6Mtf6YsuxY67H6GzAwlSItcdzMWRU" };' > www/config.js
 
       - name: Install Dependencies
@@ -22,7 +22,6 @@ jobs:
           if [ ! -f package.json ]; then npm init -y; fi
           npm install @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest @capacitor-community/speech-recognition@latest
 
-      # Use capacitor-cli directly from node_modules if npx fails or needs local path
       - name: Init Android
         run: |
           npx cap init "PyawLike" "com.pyawlike.app" --web-dir=www
