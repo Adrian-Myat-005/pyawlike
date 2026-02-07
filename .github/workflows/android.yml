@@ -11,12 +11,11 @@ jobs:
       - uses: actions/checkout @v4
 
       # --- SETUP ENVIRONMENT ---
-      - name: Setup Node 22
+      - name: Setup Node 22 (Required for Cap v7)
         uses: actions/setup-node @v4
         with: { node-version: 22 }
 
-      # --- Use Java 21 ---
-      - name: Setup Java 21
+      - name: Setup Java 21 (Required for Android 15)
         uses: actions/setup-java @v4
         with: { distribution: 'zulu', java-version: '21' }
 
@@ -26,11 +25,14 @@ jobs:
           mkdir www
           rsync -av . www --exclude www --exclude node_modules --exclude .git --exclude .github --exclude android
 
-      # --- INSTALL CAPACITOR ---
+      # --- INSTALL DEPENDENCIES (WITH NATIVE PLUGIN) ---
       - name: Install Dependencies
         run: |
           if [ ! -f package.json ]; then npm init -y; fi
+          # Install Capacitor Core
           npm install @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest
+          # INSTALL THE SPEECH PLUGIN (The Fix!)
+          npm install @capacitor-community/speech-recognition@latest
 
       # --- INIT ANDROID ---
       - name: Initialize Android
@@ -38,24 +40,18 @@ jobs:
           npx cap init "PyawLike" "com.pyawlike.app" --web-dir=www
           npx cap add android
 
-      # --- 🔥 THE NUCLEAR MANIFEST OVERWRITE 🔥 ---
-      # We DELETE the auto-generated file and write our own with permissions HARDCODED.
+      # --- NUCLEAR MANIFEST OVERWRITE (WITH NATIVE PERMISSIONS) ---
       - name: Overwrite AndroidManifest.xml
         run: |
           cd android/app/src/main
           rm AndroidManifest.xml
-          
-          # Write the new file with RECORD_AUDIO and INTERNET permissions
           cat <<XML > AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-              package="com.pyawlike.app">
-
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.pyawlike.app">
               <uses-permission android:name="android.permission.RECORD_AUDIO" />
               <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
               <uses-permission android:name="android.permission.INTERNET" />
               <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-
               <application
                   android:allowBackup="true"
                   android:icon="@mipmap/ic_launcher"
@@ -64,7 +60,6 @@ jobs:
                   android:supportsRtl="true"
                   android:theme="@style/AppTheme"
                   android:usesCleartextTraffic="true">
-
                   <activity
                       android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
                       android:name=".MainActivity"
@@ -72,14 +67,11 @@ jobs:
                       android:theme="@style/AppTheme.NoActionBarLaunch"
                       android:launchMode="singleTask"
                       android:exported="true">
-
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
                           <category android:name="android.intent.category.LAUNCHER" />
                       </intent-filter>
-
                   </activity>
-
                   <provider
                       android:name="androidx.core.content.FileProvider"
                       android:authorities="\${applicationId}.fileprovider"
@@ -92,21 +84,6 @@ jobs:
               </application>
           </manifest>
           XML
-          
-          # Print to verify
-          cat AndroidManifest.xml
-
-      # --- 🎨 INJECT ICON ---
-      - name: Inject Custom Icon
-        run: |
-          if [ -f icon.png ]; then
-            RES="android/app/src/main/res"
-            for d in $RES/mipmap-*; do
-              cp icon.png "$d/ic_launcher.png"
-              cp icon.png "$d/ic_launcher_round.png"
-            done
-            rm -rf "$RES/mipmap-anydpi-v26"
-          fi
 
       # --- 🔧 FIX KOTLIN CONFLICT ---
       - name: Inject Resolution Strategy
@@ -134,5 +111,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact @v4
         with:
-          name: pyawlike-app-fixed-manifest
+          name: pyawlike-native-speech
           path: android/app/build/outputs/apk/debug/app-debug.apk
