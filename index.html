@@ -23,7 +23,7 @@
     </div>
 
     <div class="status-area">
-        <div class="transcription" id="textDisplay">Ready</div>
+        <div class="transcription" id="textDisplay"></div>
         <div class="wave-box" id="waveBox">
             <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
         </div>
@@ -43,7 +43,7 @@
         const textSw=document.getElementById('textSw'), waveBox=document.getElementById('waveBox');
         const statusLog=document.getElementById('statusLog');
         const audioObj = new Audio();
-        audioObj.volume = 1.0; // Stabilize Volume
+        audioObj.volume = 1.0;
         
         let isRecording = false, recognition = null;
 
@@ -73,6 +73,16 @@
             audioObj.play().then(() => { audioObj.pause(); audioObj.currentTime = 0; }).catch(()=>{});
         }
 
+        async function hardReset() {
+            isRec = false; isProcessing = false;
+            document.body.classList.remove('active-left', 'active-right');
+            textDisplay.innerText = "";
+            if (window.speechSynthesis) window.speechSynthesis.cancel();
+            masterAudio.pause();
+            if (nativeMic) { try { await nativeMic.stop(); nativeMic.removeAllListeners(); } catch(e){} }
+            else if (window.rec) { window.rec.stop(); }
+        }
+
         async function toggleFS() {
             if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
             else document.exitFullscreen().catch(()=>{});
@@ -93,7 +103,7 @@
                 isRecording = true;
                 document.body.classList.add(lang === 'my-MM' ? 'active-left' : 'active-right');
                 setStatus("LISTENING...");
-                textDisplay.innerText = "...";
+                textDisplay.innerText = "";
                 updateUI(true);
             };
 
@@ -110,11 +120,11 @@
                 updateUI(false);
                 
                 const finalTxt = textDisplay.innerText;
-                if (finalTxt && finalTxt !== "..." && finalTxt !== "Ready") {
+                if (finalTxt && finalTxt.trim().length > 0) {
                     processJob(finalTxt, lang);
                 } else {
                     setStatus("READY");
-                    textDisplay.innerText = "Ready";
+                    textDisplay.innerText = "";
                 }
             };
 
@@ -140,7 +150,6 @@
             const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${lang}&client=tw-ob`;
             audioObj.src = url;
             audioObj.play().catch(e => {
-                // Silently fallback to System TTS without error tag
                 const u = new SpeechSynthesisUtterance(text);
                 u.volume = 1.0;
                 u.lang = lang === 'my' ? 'my-MM' : 'en-US';
