@@ -36,16 +36,22 @@
         let isRec = false, finalBuffer = '';
 
         // --- 1. RECORDING LOOP ---
+        function wakeUp() {
+            // Unlocks System TTS
+            window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+            // Unlocks HTML5 Audio
+            masterAudio.play().then(() => { masterAudio.pause(); masterAudio.currentTime = 0; }).catch(() => {});
+        }
+
         function attach(btn, inputLang, targetLang, side) {
             btn.addEventListener('pointerdown', async (e) => {
                 e.preventDefault(); 
-                if(isRec) { stop(); return; }
+                if(isRec) { await stop(inputLang, targetLang); return; }
                 
                 document.body.classList.add(side === 'left' ? 'active-left' : 'active-right');
                 textDisplay.innerText = "Listening...";
                 
-                // Wake Audio Engine (Silence)
-                window.speechSynthesis.speak(new SpeechSynthesisUtterance("")); 
+                wakeUp(); 
                 
                 isRec = true;
                 btn.setPointerCapture(e.pointerId);
@@ -61,7 +67,7 @@
                                 textDisplay.innerText = finalBuffer;
                             }
                         });
-                    } catch(e) { stop(); showErr("Mic Error: " + e.message); }
+                    } catch(e) { await stop(inputLang, targetLang); showErr("Mic Error: " + e.message); }
                 } else {
                     // Laptop Simulation
                     setTimeout(() => { finalBuffer = "Hello World"; stop(inputLang, targetLang); }, 1500);
