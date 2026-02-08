@@ -3,80 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike Pro</title>
+    <title>PyawLike Fluent Pro</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <link rel="icon" href="data:,">
     <script src="config.js"></script>
+    <!-- High-Quality Neural TTS Library -->
+    <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
     <style>
         :root { --circle-size: clamp(220px, 50vw, 300px); }
         body { background: var(--bg); transition: 0.3s; overflow: hidden; font-family: 'Inter', sans-serif; }
-        
-        /* FULL VISIBILITY STATUS BOX */
         .status-area {
-            position: fixed;
-            top: 15%;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 90vw;
-            max-width: 600px;
-            min-height: 160px;
-            background: var(--btn-white);
-            border-radius: 32px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 30px;
-            box-shadow: 0 30px 60px rgba(0,0,0,0.12);
-            z-index: 99999;
-            text-align: center;
+            position: fixed; top: 15%; left: 50%; transform: translateX(-50%);
+            width: 90vw; max-width: 600px; min-height: 160px;
+            background: var(--btn-white); border-radius: 32px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 30px; box-shadow: 0 30px 60px rgba(0,0,0,0.12); z-index: 99999; text-align: center;
         }
-        
-        .transcription { 
-            font-size: 28px; 
-            font-weight: 800; 
-            color: var(--text); 
-            line-height: 1.2;
-            word-wrap: break-word;
-            width: 100%;
-        }
-
-        .status-badge { 
-            font-size: 12px; 
-            font-weight: 900; 
-            letter-spacing: 3px; 
-            color: var(--accent); 
-            margin-bottom: 15px;
-            text-transform: uppercase;
-            opacity: 0.8;
-        }
-
+        .transcription { font-size: 28px; font-weight: 800; color: var(--text); line-height: 1.2; width: 100%; }
+        .status-badge { font-size: 12px; font-weight: 900; letter-spacing: 3px; color: var(--accent); margin-bottom: 15px; text-transform: uppercase; opacity: 0.8; }
         .speaker-wrapper { position: fixed; bottom: 12%; left: 50%; transform: translateX(-50%); z-index: 1000; }
-        
-        /* High Quality Pulse */
-        @keyframes pulse-ring {
-            0% { transform: scale(.33); }
-            80%, 100% { opacity: 0; }
-        }
-        .active-ring {
-            position: absolute; width: 100%; height: 100%; border-radius: 50%;
-            background: var(--accent); opacity: 0.2;
-            animation: pulse-ring 1.25s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
-        }
     </style>
 </head>
 <body class="">
-    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:100000;border-radius:5px;opacity:0.6;">System Ready</div>
+    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:100000;border-radius:5px;opacity:0.6;">Nilar Engine Initializing...</div>
     
     <div class="top-nav" id="menuBtn"><div class="nav-dot"></div></div>
     <div class="dropdown" id="menu">
         <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw"></div>
+        <div class="menu-item">SHOW TEXT <input type="checkbox" id="textSw" checked></div>
         <div class="menu-item">NATURAL VOICE <input type="checkbox" id="naturalSw" checked></div>
         <div class="menu-item">CONTINUOUS <input type="checkbox" id="contSw"></div>
-        <button onclick="testVoice()" style="background:var(--accent);color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:10px;cursor:pointer;font-size:12px;">TEST QUALITY VOICE</button>
+        <button onclick="testVoice()" style="background:var(--accent);color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:10px;cursor:pointer;font-size:12px;">TEST NILAR VOICE</button>
         <button onclick="hardReset()" style="background:#ff4444;color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:15px;cursor:pointer;font-size:12px;">HARD RESET</button>
     </div>
 
@@ -86,7 +46,6 @@
     </div>
 
     <div class="speaker-wrapper">
-        <div id="ring" style="display:none;" class="active-ring"></div>
         <div class="split-btn-container" id="mainCircle">
             <button class="half-btn" id="btnMM" data-lang="my-MM" data-side="left"><span class="btn-label">MM</span></button>
             <button class="half-btn" id="btnENG" data-lang="en-US" data-side="right"><span class="btn-label">ENG</span></button>
@@ -97,7 +56,6 @@
         const logArea = document.getElementById('debug-log');
         const textDisplay = document.getElementById('textDisplay');
         const stateBadge = document.getElementById('stateBadge');
-        const ring = document.getElementById('ring');
         let masterAudio = new Audio();
         
         let isRec = false, isProcessing = false;
@@ -108,10 +66,8 @@
         function setUIState(state) { stateBadge.innerText = state; }
 
         async function hardReset() {
-            log("Engine Resetting...");
             isRec = false; isProcessing = false;
             document.body.classList.remove('active-left', 'active-right');
-            ring.style.display = 'none';
             setUIState('READY');
             textDisplay.innerText = "READY";
             if (window.speechSynthesis) window.speechSynthesis.cancel();
@@ -128,21 +84,24 @@
                 recognition.interimResults = true;
                 recognition.onresult = (e) => {
                     let full = '';
-                    for (let i = e.resultIndex; i < e.results.length; ++i) full += e.results[i][0].transcript;
+                    for (let i = 0; i < e.results.length; ++i) full += e.results[i][0].transcript;
                     currentTranscript = full.trim();
                     textDisplay.innerText = currentTranscript || "Listening...";
                 };
                 recognition.onend = () => { if (isRec) try { recognition.start(); } catch(e) {} };
-                log("High Quality Engine Live");
+                log("Voice Engine Ready");
             }
         }
 
         async function start(lang, side) {
             if (isRec || isProcessing) return;
+            // Prime audio
+            masterAudio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+            masterAudio.play().catch(()=>{});
+
             isRec = true; currentTranscript = ''; curLang = lang;
             setUIState('LISTENING');
             document.body.classList.add(side === 'left' ? 'active-left' : 'active-right');
-            ring.style.display = 'block';
             textDisplay.innerText = "Listening...";
             if (recognition) {
                 recognition.lang = curLang;
@@ -154,7 +113,6 @@
             if (!isRec) return;
             isRec = false; isProcessing = true;
             document.body.classList.remove('active-left', 'active-right');
-            ring.style.display = 'none';
             setUIState('THINKING');
             if (recognition) { try { recognition.stop(); } catch(e) {} }
 
@@ -173,27 +131,43 @@
             }, 400);
         }
 
-        // --- DIRECT EDGE TTS IMPLEMENTATION (NO LIBRARY NEEDED) ---
         async function speak(text, lang) {
             setUIState('SPEAKING');
             const natural = document.getElementById('naturalSw').checked;
             
             if (natural) {
+                // Priority 1: Nilar Neural
                 try {
-                    log("Neural Voice: " + lang);
-                    const voice = (lang === 'my') ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
+                    log("Nilar Neural: " + lang);
+                    const TTS = window.EdgeTTS?.EdgeTTS || window.EdgeTTS?.UniversalEdgeTTS || window.EdgeTTS;
+                    if (!TTS) throw new Error("Library Missing");
                     
-                    // Direct fetch to high-quality Microsoft Proxy
-                    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${(lang === 'my' ? 'my' : 'en')}&client=tw-ob`;
+                    const tts = new TTS();
+                    const voice = (lang === 'my' || lang === 'my-MM') ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
+                    
+                    const audioData = await tts.synthesize(text, voice);
+                    const blob = new Blob([audioData], { type: 'audio/mp3' });
+                    const url = URL.createObjectURL(blob);
                     
                     masterAudio.src = url;
-                    masterAudio.onended = () => finishTurn();
-                    masterAudio.onerror = () => { fallbackSpeak(text, lang); };
+                    masterAudio.onended = () => { URL.revokeObjectURL(url); finishTurn(); };
+                    masterAudio.onerror = () => { URL.revokeObjectURL(url); throw new Error("Playback Error"); };
                     await masterAudio.play();
                     return;
                 } catch (e) {
-                    log("Neural Failed");
+                    log("Nilar Fail -> Google");
                 }
+
+                // Priority 2: Google Pro (Fluent Backup)
+                try {
+                    const gLang = (lang === 'my' || lang === 'my-MM') ? 'my' : 'en';
+                    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${gLang}&client=tw-ob`;
+                    masterAudio.src = url;
+                    masterAudio.onended = () => finishTurn();
+                    masterAudio.onerror = () => fallbackSpeak(text, lang);
+                    await masterAudio.play();
+                    return;
+                } catch (e) { log("Backup Fail"); }
             }
             fallbackSpeak(text, lang);
         }
@@ -212,20 +186,20 @@
         }
 
         function fallbackSpeak(text, lang) {
-            log("Fallback Voice");
+            log("System Voice");
             const u = new SpeechSynthesisUtterance(text);
-            u.lang = (lang === 'my') ? 'my-MM' : 'en-US';
+            u.lang = (lang === 'my' || lang === 'my-MM') ? 'my-MM' : 'en-US';
             u.onend = () => finishTurn();
             window.speechSynthesis.speak(u);
         }
 
         async function testVoice() {
-            log("Test Voice...");
-            await speak("မင်္ဂလာပါ၊ အသံစနစ်က ကောင်းမွန်စွာ အလုပ်လုပ်နေပါတယ်။", 'my');
+            log("Test Nilar...");
+            await speak("မင်္ဂလာပါ၊ ကျွန်မနာမည် နီလာ ဖြစ်ပါတယ်။ အခု အသံစနစ်က ပိုမို သဘာဝကျလာပါပြီ။", 'my');
         }
 
         function unlockAudio() {
-            log("Unlocked");
+            log("Audio System Live");
             masterAudio.play().then(() => { masterAudio.pause(); }).catch(() => {});
             if (window.speechSynthesis) window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
             window.removeEventListener('pointerdown', unlockAudio);
