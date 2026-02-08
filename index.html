@@ -41,37 +41,31 @@
 
         // --- GLOBAL ERROR TRAP ---
         window.onerror = function(msg, source, lineno, colno, error) {
-            log("CRASH: " + msg);
-            // Auto-recover UI state
+            const errorMsg = "CRASH: " + msg + " (" + lineno + ":" + colno + ")";
+            log(errorMsg);
+            console.error(errorMsg, error);
             isProcessing = false;
             document.body.classList.remove('active-left', 'active-right');
-            textDisplay.innerText = "READY (Recovered)";
             return false;
         };
 
-        function log(msg) { logArea.innerText = msg; }
+        function log(msg) { 
+            console.log(msg);
+            logArea.innerText = msg; 
+        }
 
-        // --- WAKE LOCK (Keep Screen On) ---
+        // --- WAKE LOCK ---
         async function requestWakeLock() {
             if ('wakeLock' in navigator) {
                 try {
                     wakeLock = await navigator.wakeLock.request('screen');
                     log("Screen Locked");
-                    wakeLock.addEventListener('release', () => {
-                        log("Screen Lock Released");
-                    });
-                } catch (err) {
-                   // log("WakeLock Fail");
-                }
+                } catch (err) {}
             }
         }
-        // Re-request wake lock when page becomes visible
-        document.addEventListener('visibilitychange', async () => {
-            if (wakeLock !== null && document.visibilityState === 'visible') {
-                await requestWakeLock();
-            }
+        document.addEventListener('visibilitychange', () => {
+            if (wakeLock !== null && document.visibilityState === 'visible') requestWakeLock();
         });
-        requestWakeLock();
 
         // --- FETCH WITH TIMEOUT ---
         async function fetchWithTimeout(resource, options = {}) {
@@ -94,17 +88,22 @@
             document.body.classList.toggle('dark-mode', themeSw.checked);
         });
 
-        // --- AUDIO UNLOCK FOR MOBILE ---
+        // --- AUDIO UNLOCK ---
         function unlockAudio() {
-            const silent = new SpeechSynthesisUtterance("");
-            window.speechSynthesis.speak(silent);
+            log("Unlocking Audio...");
+            if (window.SpeechSynthesisUtterance) {
+                try {
+                    const silent = new SpeechSynthesisUtterance("");
+                    window.speechSynthesis.speak(silent);
+                } catch (e) { log("TTS Unlock Fail"); }
+            }
             masterAudio.play().then(() => {
                 masterAudio.pause();
                 masterAudio.currentTime = 0;
-            }).catch(() => {});
-            log("Audio Unlocked");
+                log("Audio Unlocked");
+            }).catch(() => { log("Audio Play Blocked"); });
             window.removeEventListener('pointerdown', unlockAudio);
-            requestWakeLock(); // Retry wake lock on interaction
+            requestWakeLock();
         }
         window.addEventListener('pointerdown', unlockAudio);
 
@@ -122,51 +121,56 @@
             btn.appendChild(circle);
         }
 
-        const Speech = (window.Capacitor && window.Capacitor.Plugins) ? window.Capacitor.Plugins.SpeechRecognition : null;
+        // --- INITIALIZE SPEECH ---
+        let Speech = null;
         let recognition = null;
 
-        if (!Speech && ('webkitSpeechRecognition' in window || 'speechRecognition' in window)) {
-            const SpeechRecognition = window.webkitSpeechRecognition || window.speechRecognition;
-            recognition = new SpeechRecognition();
-            recognition.continuous = true;
-            recognition.interimResults = true;
+        function initSpeech() {
+            Speech = (window.Capacitor && window.Capacitor.Plugins) ? window.Capacitor.Plugins.SpeechRecognition : null;
+            
+            if (Speech) {
+                log("Capacitor Speech Found");
+            } else if ('webkitSpeechRecognition' in window || 'speechRecognition' in window) {
+                log("WebSpeech Found");
+                const SpeechRecognition = window.webkitSpeechRecognition || window.speechRecognition;
+                recognition = new SpeechRecognition();
+                recognition.continuous = true;
+                recognition.interimResults = true;
 
-            recognition.onresult = (event) => {
-                let interimTranscript = '';
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) {
-                        masterBuffer += event.results[i][0].transcript;
-                    } else {
-                        interimTranscript += event.results[i][0].transcript;
+                recognition.onresult = (event) => {
+                    let interimTranscript = '';
+                    for (let i = event.resultIndex; i < event.results.length; ++i) {
+                        if (event.results[i].isFinal) masterBuffer += event.results[i][0].transcript;
+                        else interimTranscript += event.results[i][0].transcript;
                     }
-                }
-                finalBuffer = (masterBuffer + interimTranscript).trim();
-                textDisplay.innerText = finalBuffer || "Listening...";
-            };
+                    finalBuffer = (masterBuffer + interimTranscript).trim();
+                    textDisplay.innerText = finalBuffer || "Listening...";
+                };
 
-            recognition.onerror = (event) => {
-                if (event.error === 'no-speech') return;
-                log("Mic Error: " + event.error);
-            };
+                recognition.onerror = (event) => {
+                    if (event.error === 'no-speech') return;
+                    log("Mic Error: " + event.error);
+                };
 
-            recognition.onend = () => {
-                if (isRec) {
-                    try { recognition.start(); } catch(e) {}
-                }
-            };
+                recognition.onend = () => { if (isRec) try { recognition.start(); } catch(e) {} };
+            } else {
+                log("No Speech Engine!");
+            }
+            checkPermissions();
         }
 
         async function checkPermissions() {
             if (Speech) {
                 try {
+                    log("Checking Perms...");
                     const perm = await Speech.checkPermissions();
+                    log("Perm status: " + perm.speechRecognition);
                     if (perm.speechRecognition !== 'granted') {
-                        await Speech.requestPermissions();
+                        log("Requesting Perms...");
+                        const req = await Speech.requestPermissions();
+                        log("New Perm: " + req.speechRecognition);
                     }
-                    log("Mic Ready");
-                } catch (e) { log("Mic Denied"); }
-            } else if (recognition) {
-                log("WebSpeech Ready");
+                } catch (e) { log("Perm Error: " + e.message); }
             }
         }
 
@@ -174,20 +178,15 @@
             if (!isRec) return;
             try {
                 if (Speech) {
-                    await Speech.start({ 
-                        language: curLang, 
-                        partialResults: true, 
-                        popup: false,
-                        continuous: true 
-                    });
+                    await Speech.start({ language: curLang, partialResults: true, popup: false, continuous: true });
                 } else if (recognition) {
                     recognition.lang = curLang;
                     recognition.start();
                 }
-                log("Listening...");
+                log("Listening (" + curLang + ")...");
             } catch (e) {
-                log("Start Error: " + e.message);
-                if (isRec) setTimeout(runMic, 300); 
+                log("Mic Start Fail: " + e.message);
+                if (isRec) setTimeout(runMic, 500);
             }
         }
 
@@ -202,8 +201,8 @@
             textDisplay.innerText = "Listening...";
             textDisplay.style.color = "var(--accent)";
 
+            if (window.speechSynthesis) window.speechSynthesis.cancel();
             masterAudio.pause();
-            window.speechSynthesis.cancel();
 
             if (Speech) {
                 Speech.removeAllListeners();
@@ -219,10 +218,8 @@
                         finalBuffer = masterBuffer;
                     }
                 });
-                await runMic();
-            } else if (recognition) {
-                await runMic();
             }
+            await runMic();
         }
 
         async function stopRecording() {
@@ -248,7 +245,7 @@
                     textDisplay.innerText = "READY";
                     isProcessing = false;
                 }
-            }, 300);
+            }, 400);
         }
 
         async function translate(text) {
@@ -261,7 +258,7 @@
                 textDisplay.innerText = translated;
                 await speak(translated, tl);
             } catch (e) { 
-                log("Network Error");
+                log("Translate Error");
                 textDisplay.innerText = "TRY AGAIN";
                 isProcessing = false;
             }
@@ -275,8 +272,7 @@
                 try {
                     const url = window.ENV?.SERVER_URL || window.location.origin;
                     const res = await fetchWithTimeout(`${url}/api/tts`, {
-                        method: 'POST', 
-                        headers: {'Content-Type': 'application/json'},
+                        method: 'POST', headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({ text, lang, apiKey: window.ENV?.GEMINI_API_KEY }),
                         timeout: 12000
                     });
@@ -284,84 +280,53 @@
                     if (data.audio) {
                         const b = new Blob([Uint8Array.from(atob(data.audio), c => c.charCodeAt(0))], {type:'audio/wav'});
                         const blobUrl = URL.createObjectURL(b);
-                        
                         masterAudio.src = blobUrl;
-                        masterAudio.onended = () => {
-                            URL.revokeObjectURL(blobUrl); 
-                            isProcessing = false;
-                        };
-                        masterAudio.onerror = () => {
-                            URL.revokeObjectURL(blobUrl);
-                            fallbackSpeak(text, lang);
-                        };
-                        
+                        masterAudio.onended = () => { URL.revokeObjectURL(blobUrl); isProcessing = false; };
+                        masterAudio.onerror = () => { URL.revokeObjectURL(blobUrl); fallbackSpeak(text, lang); };
                         await masterAudio.play();
                         playedNatural = true;
-                        log("Natural Voice active");
+                        log("Gemini Voice OK");
                     }
-                } catch (e) {
-                    log("TTS API unavailable");
-                }
+                } catch (e) { log("Gemini TTS Fail"); }
             }
-
-            if (!playedNatural) {
-                fallbackSpeak(text, lang);
-            }
+            if (!playedNatural) fallbackSpeak(text, lang);
         }
 
         function fallbackSpeak(text, lang) {
+            if (!window.SpeechSynthesisUtterance || !window.speechSynthesis) {
+                log("No System TTS!");
+                isProcessing = false;
+                return;
+            }
             log("Using System Voice");
             window.speechSynthesis.cancel();
             const u = new SpeechSynthesisUtterance(text);
-            
-            if (lang === 'my') {
-                u.lang = 'my-MM';
-            } else {
-                u.lang = 'en-US';
-            }
-
-            // --- WATCHDOG: Force release if system is silent ---
-            const watchdog = setTimeout(() => {
-                if (isProcessing) {
-                    log("System TTS Timeout");
-                    isProcessing = false;
-                    window.speechSynthesis.cancel();
-                }
-            }, 8000); // 8 seconds max for system voice
-
-            u.onend = () => { 
-                clearTimeout(watchdog);
-                isProcessing = false; 
-            };
-            u.onerror = (e) => { 
-                clearTimeout(watchdog);
-                log("System TTS Error");
-                isProcessing = false; 
-            };
+            u.lang = (lang === 'my') ? 'my-MM' : 'en-US';
+            const watchdog = setTimeout(() => { if (isProcessing) { isProcessing = false; window.speechSynthesis.cancel(); } }, 8000);
+            u.onend = () => { clearTimeout(watchdog); isProcessing = false; };
+            u.onerror = () => { clearTimeout(watchdog); isProcessing = false; log("TTS Error"); };
             window.speechSynthesis.speak(u);
-        }
-
-        // Warm up system voices for Android
-        window.speechSynthesis.getVoices();
-        if (speechSynthesis.onvoiceschanged !== undefined) {
-            speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
         }
 
         function attach(id, lang, side) {
             const btn = document.getElementById(id);
-            btn.addEventListener('pointerdown', (e) => { 
-                e.preventDefault(); 
-                btn.setPointerCapture(e.pointerId); 
-                createRipple(e, btn);
-                start(lang, side); 
-            });
+            btn.addEventListener('pointerdown', (e) => { e.preventDefault(); btn.setPointerCapture(e.pointerId); createRipple(e, btn); start(lang, side); });
             btn.addEventListener('pointerup', (e) => { e.preventDefault(); btn.releasePointerCapture(e.pointerId); stopRecording(); });
         }
 
         attach('btnMM', 'my-MM', 'left');
         attach('btnENG', 'en-US', 'right');
         document.getElementById('menuBtn').addEventListener('click', () => document.getElementById('menu').classList.toggle('open'));
-        checkPermissions();
+
+        // Handle Capacitor ready
+        document.addEventListener('deviceready', initSpeech, false);
+        // Fallback for browser or if deviceready doesn't fire
+        setTimeout(() => { if (!Speech && !recognition) initSpeech(); }, 2000);
+
+        if (window.speechSynthesis) {
+            window.speechSynthesis.getVoices();
+            if (speechSynthesis.onvoiceschanged !== undefined) speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
+        }
     </script>
 </body>
 </html>
