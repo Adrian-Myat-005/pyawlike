@@ -2,174 +2,148 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike Minimal</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PyawLike - Nilar Default</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="icon" href="data:,">
     <script src="config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
 </head>
-<body>
-    <div class="top-nav-container">
-        <button class="fs-btn" onclick="toggleFS()">
-            <svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
-        </button>
-        <div class="nav-dot" id="menuBtn"></div>
-    </div>
-
+<body class="dark-mode">
+    <div id="error" style="position:fixed;bottom:50px;left:50%;transform:translateX(-50%);background:red;color:white;padding:10px 20px;border-radius:20px;display:none;z-index:10000;font-size:12px;"></div>
+    
+    <div class="top-nav"><div class="nav-dot" id="menuBtn"></div></div>
     <div class="dropdown" id="menu">
-        <div class="menu-item">FULLSCREEN <button onclick="toggleFS()" style="background:none;border:1px solid var(--accent);border-radius:4px;font-size:9px;padding:2px 6px;color:var(--text);">TOGGLE</button></div>
-        <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw"></div>
-        <div class="menu-item">TEXT DISPLAY <input type="checkbox" id="textSw" checked></div>
+        <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw" checked></div>
+        <div class="menu-item">SHOW TEXT <input type="checkbox" id="textSw" checked></div>
+        <div class="menu-item">GEMINI VOICE <input type="checkbox" id="naturalSw"></div>
     </div>
 
-    <div class="status-area" id="statusBox">
-        <div class="transcription" id="textDisplay">READY</div>
-    </div>
-
-    <div class="wave-container" id="waveBox">
-        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
-    </div>
+    <div class="status-area"><div class="transcription" id="textDisplay">Ready</div></div>
 
     <div class="speaker-wrapper">
         <div class="split-btn-container">
-            <button class="half-btn" id="btnMM" data-lang="my-MM" data-side="left"><span class="btn-label">MM</span></button>
-            <button class="half-btn" id="btnENG" data-lang="en-US" data-side="right"><span class="btn-label">ENG</span></button>
+            <button class="half-btn" id="btnMM" data-lang="my-MM"><span class="btn-label">MM</span></button>
+            <button class="half-btn" id="btnENG" data-lang="en-US"><span class="btn-label">ENG</span></button>
         </div>
     </div>
 
     <script>
-        const textDisplay = document.getElementById('textDisplay');
-        const statusBox = document.getElementById('statusBox');
-        const waveBox = document.getElementById('waveBox');
-        const textSw = document.getElementById('textSw');
-        let masterAudio = new Audio();
-        
-        let isRec = false, isProcessing = false, curLang = 'en-US', currentTranscript = '';
-        let recognition = null;
+        const btnMM=document.getElementById('btnMM'), btnENG=document.getElementById('btnENG');
+        const textDisplay=document.getElementById('textDisplay'), menu=document.getElementById('menu');
+        const errToast=document.getElementById('error');
+        const nativeMic = window.Capacitor ? Capacitor.Plugins.SpeechRecognition : null;
+        const masterAudio = new Audio();
+        let isRec = false, finalBuffer = '';
 
-        function setUIState(active) {
-            if (active) {
-                if (textSw.checked) {
-                    statusBox.style.display = 'flex';
-                    waveBox.style.display = 'none';
-                } else {
-                    statusBox.style.display = 'none';
-                    waveBox.style.display = 'flex';
-                }
-            } else {
-                if (textSw.checked) {
-                    statusBox.style.display = 'flex';
-                    waveBox.style.display = 'none';
-                } else {
-                    statusBox.style.display = 'none';
-                    waveBox.style.display = 'none';
-                }
-            }
-        }
+        // --- 1. RECORDING ---
+        function attach(btn, inputLang, targetLang, side) {
+            btn.addEventListener('pointerdown', async (e) => {
+                e.preventDefault(); 
+                if(isRec) { stop(); return; }
+                
+                document.body.classList.add(side === 'left' ? 'active-left' : 'active-right');
+                textDisplay.innerText = "Listening...";
+                window.speechSynthesis.speak(new SpeechSynthesisUtterance("")); 
+                isRec = true;
+                btn.setPointerCapture(e.pointerId);
 
-        async function toggleFS() {
-            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
-            else document.exitFullscreen().catch(()=>{});
-        }
-
-        async function hardReset() {
-            isRec = false; isProcessing = false;
-            document.body.classList.remove('active-left', 'active-right');
-            setUIState(false);
-            textDisplay.innerText = "READY";
-            masterAudio.pause();
-            if (recognition) { try { recognition.stop(); } catch(e) {} }
-        }
-
-        async function initSystem() {
-            if ('webkitSpeechRecognition' in window || 'speechRecognition' in window) {
-                const SpeechReq = window.webkitSpeechRecognition || window.speechRecognition;
-                recognition = new SpeechReq();
-                recognition.continuous = true;
-                recognition.interimResults = true;
-                recognition.onresult = (e) => {
-                    let full = '';
-                    for (let i = e.resultIndex; i < e.results.length; ++i) full += e.results[i][0].transcript;
-                    currentTranscript = full.trim();
-                    textDisplay.innerText = currentTranscript || "...";
-                };
-                recognition.onend = () => { if (isRec) try { recognition.start(); } catch(e) {} };
-            }
-        }
-
-        async function start(lang, side) {
-            if (isRec || isProcessing) return;
-            isRec = true; currentTranscript = ''; curLang = lang;
-            document.body.classList.add(side === 'left' ? 'active-left' : 'active-right');
-            setUIState(true);
-            textDisplay.innerText = "Listening...";
-            if (recognition) {
-                recognition.lang = curLang;
-                try { recognition.start(); } catch(e) {}
-            }
-        }
-
-        async function stopRecording() {
-            if (!isRec) return;
-            isRec = false; isProcessing = true;
-            document.body.classList.remove('active-left', 'active-right');
-            if (recognition) { try { recognition.stop(); } catch(e) {} }
-
-            setTimeout(async () => {
-                if (currentTranscript) {
+                if(nativeMic) {
                     try {
-                        const isMM = curLang.startsWith('my');
-                        const sl = isMM ? 'my' : 'en', tl = isMM ? 'en' : 'my';
-                        const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(currentTranscript)}`);
-                        const data = await res.json();
-                        const result = data[0].map(s => s[0]).join('').trim();
-                        textDisplay.innerText = result;
-                        await speak(result, tl);
-                    } catch (e) { hardReset(); }
-                } else { hardReset(); }
-            }, 400);
-        }
+                        await nativeMic.requestPermissions(); 
+                        await nativeMic.start({ language: inputLang, maxResults: 1, popup: true });
+                        nativeMic.addListener('partialResults', (d) => {
+                            if(d.matches && d.matches.length > 0) {
+                                finalBuffer = d.matches[0];
+                                textDisplay.innerText = finalBuffer;
+                            }
+                        });
+                    } catch(e) { stop(); showErr("Mic Error"); }
+                } else {
+                    setTimeout(() => { finalBuffer = "Hello Test"; stop(inputLang, targetLang); }, 1500);
+                }
+            });
 
-        async function speak(text, lang) {
-            try {
-                const TTS = window.EdgeTTS?.EdgeTTS || window.EdgeTTS;
-                const tts = new TTS();
-                const voice = (lang === 'my' || lang === 'my-MM') ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
-                const audioData = await tts.synthesize(text, voice);
-                const blob = new Blob([audioData], { type: 'audio/mp3' });
-                const url = URL.createObjectURL(blob);
-                masterAudio.src = url;
-                masterAudio.onended = () => { URL.revokeObjectURL(url); hardReset(); };
-                await masterAudio.play();
-            } catch (e) { hardReset(); }
-        }
-
-        function unlockAudio() {
-            masterAudio.play().then(() => { masterAudio.pause(); }).catch(()=>{});
-            window.removeEventListener('pointerdown', unlockAudio);
-        }
-        window.addEventListener('pointerdown', unlockAudio);
-
-        function attach(id, lang, side) {
-            const btn = document.getElementById(id);
-            btn.addEventListener('click', () => { 
-                if (isProcessing) return;
-                if (isRec) stopRecording();
-                else start(lang, side); 
+            btn.addEventListener('pointerup', (e) => {
+                btn.releasePointerCapture(e.pointerId);
+                stop(inputLang, targetLang); 
             });
         }
 
-        attach('btnMM', 'my-MM', 'left');
-        attach('btnENG', 'en-US', 'right');
-        document.getElementById('menuBtn').addEventListener('click', () => document.getElementById('menu').classList.toggle('open'));
-        document.getElementById('themeSw').addEventListener('change', () => document.body.classList.toggle('dark-mode'));
-        textSw.addEventListener('change', () => setUIState(isRec || isProcessing));
+        async function stop(inputLang, targetLang) {
+            if(!isRec) return;
+            isRec = false;
+            document.body.classList.remove('active-left', 'active-right');
+            if(nativeMic) { try { await nativeMic.stop(); nativeMic.removeAllListeners(); } catch(e){} }
+            
+            if(finalBuffer && finalBuffer.trim().length > 0) {
+                textDisplay.innerText = "Translating...";
+                await processTranslation(finalBuffer, inputLang, targetLang);
+                finalBuffer = "";
+            } else { textDisplay.innerText = "Ready"; }
+        }
+
+        async function processTranslation(text, inputLang, targetLang) {
+            try {
+                const sl = inputLang.startsWith('my') ? 'my' : 'en';
+                const tl = targetLang.startsWith('my') ? 'my' : 'en';
+                const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`);
+                const data = await res.json();
+                const translatedText = data[0].map(s => s[0]).join('').trim();
+                textDisplay.innerText = translatedText;
+                await speak(translatedText, targetLang);
+            } catch(e) { showErr("Trans Fail"); }
+        }
+
+        // --- 2. SPEAKING (The Critical Update) ---
+        async function speak(text, lang) {
+            const useGemini = document.getElementById('naturalSw').checked;
+            
+            // OPTION A: GEMINI (Only if toggled ON)
+            if(useGemini) {
+                try {
+                    const url = window.ENV?.SERVER_URL || 'https://pyawlike.vercel.app';
+                    const res = await fetch(`${url}/api/tts`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ text, lang: lang.startsWith('my')?'my':'en' })
+                    });
+                    const data = await res.json();
+                    if(data.audio) {
+                        const b = new Blob([Uint8Array.from(atob(data.audio), c => c.charCodeAt(0))], {type:'audio/wav'});
+                        masterAudio.src = URL.createObjectURL(b);
+                        masterAudio.play();
+                        return;
+                    }
+                } catch(e) { console.warn("Gemini limit reached, falling back to Edge."); }
+            }
+
+            // OPTION B: EDGE TTS (DEFAULT FOR BURMESE)
+            // This is the specific logic you asked for:
+            try {
+                if(typeof EdgeTTS !== 'undefined') {
+                    // FORCE 'NilarNeural' for Burmese
+                    const voice = lang.startsWith('my') ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
+                    console.log("Using Edge Voice:", voice);
+                    
+                    const tts = new EdgeTTS.EdgeTTS();
+                    await tts.speak({ text: text, voice: voice });
+                    return;
+                }
+            } catch(e) { console.error("Edge TTS Failed", e); }
+
+            // OPTION C: SYSTEM OFFLINE (Fallback)
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = lang;
+            window.speechSynthesis.speak(u);
+        }
+
+        function showErr(m) { errToast.innerText=m; errToast.style.display='block'; setTimeout(()=>errToast.style.display='none',3000); }
+
+        attach(btnMM, 'my-MM', 'en-US', 'left');
+        attach(btnENG', 'en-US', 'my-MM', 'right');
         
-        initSystem();
+        document.getElementById('menuBtn').addEventListener('click', () => menu.classList.toggle('open'));
+        document.getElementById('themeSw').addEventListener('change', (e) => document.body.classList.toggle('dark-mode', e.target.checked));
     </script>
 </body>
 </html>
