@@ -10,6 +10,7 @@
     <link rel="stylesheet" href="style.css">
     <link rel="icon" href="data:,">
     <script src="config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
     <style>
         :root { --circle-size: clamp(220px, 50vw, 300px); }
         .speaker-wrapper { width: var(--circle-size); height: var(--circle-size); }
@@ -36,7 +37,7 @@
     </style>
 </head>
 <body class="">
-    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.6;">System Secure</div>
+    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.6;">Natural Voice Enabled</div>
     
     <div class="top-nav" id="menuBtn"><div class="nav-dot"></div></div>
     <div class="dropdown" id="menu">
@@ -44,7 +45,7 @@
         <div class="menu-item">SHOW TEXT <input type="checkbox" id="textSw" checked></div>
         <div class="menu-item">NATURAL VOICE <input type="checkbox" id="naturalSw" checked></div>
         <div class="menu-item">CONTINUOUS <input type="checkbox" id="contSw"></div>
-        <button onclick="testVoice()" style="background:var(--accent);color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:10px;cursor:pointer;font-size:12px;">TEST VOICE OUTPUT</button>
+        <button onclick="testVoice()" style="background:var(--accent);color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:10px;cursor:pointer;font-size:12px;">TEST NATURAL BURMESE</button>
         <button onclick="hardReset()" style="background:#ff4444;color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:15px;cursor:pointer;font-size:12px;">HARD RESET SYSTEM</button>
     </div>
 
@@ -129,7 +130,6 @@
 
             if (SpeechRecognition) {
                 SpeechRecognition.removeAllListeners();
-                // FIX 1: Watch BOTH partial and final results for maximum stability
                 SpeechRecognition.addListener('partialResults', (data) => {
                     if (data.matches && data.matches.length > 0) {
                         currentTranscript = data.matches[0];
@@ -162,12 +162,8 @@
             else if (recognition) try { recognition.stop(); } catch(e) {}
 
             setTimeout(async () => {
-                if (currentTranscript) {
-                    await processPipeline(currentTranscript);
-                } else {
-                    log("Silence detected");
-                    hardReset();
-                }
+                if (currentTranscript) await processPipeline(currentTranscript);
+                else hardReset();
             }, 500);
         }
 
@@ -175,7 +171,6 @@
             const isMM = curLang.startsWith('my');
             const sl = isMM ? 'my' : 'en', tl = isMM ? 'en' : 'my';
             try {
-                // FIX 2: Using the Guaranteed Single-Fetch Endpoint
                 const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`);
                 const data = await res.json();
                 const result = data[0].map(s => s[0]).join('').trim();
@@ -189,17 +184,34 @@
             const natural = document.getElementById('naturalSw').checked;
             
             if (natural) {
+                // Try Microsoft Edge Neural (Best Quality)
                 try {
-                    // FIX 3: Using the "Open-Proxy" Google voice engine (No key, No block)
+                    log("Thiha Neural...");
+                    const tts = new EdgeTTS();
+                    const voice = (lang === 'my') ? 'my-MM-ThihaNeural' : 'en-US-AvaNeural';
+                    const audioData = await tts.synthesize(text, voice);
+                    const blob = new Blob([audioData], { type: 'audio/mp3' });
+                    const url = URL.createObjectURL(blob);
+                    
+                    masterAudio.src = url;
+                    masterAudio.onended = () => { URL.revokeObjectURL(url); hardReset(); };
+                    masterAudio.onerror = () => { URL.revokeObjectURL(url); throw new Error("Neural Fail"); };
+                    await masterAudio.play();
+                    return;
+                } catch (e) {
+                    log("Neural Fail -> Google");
+                }
+
+                // Try Google Natural (High Reliability)
+                try {
                     const gLang = (lang === 'my') ? 'my' : 'en';
                     const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${gLang}&client=tw-ob`;
                     masterAudio.src = url;
                     masterAudio.onended = () => hardReset();
                     masterAudio.onerror = () => fallbackSpeak(text, lang);
                     await masterAudio.play();
-                    log("Voice Output OK");
                     return;
-                } catch (e) { log("Audio Blocked"); }
+                } catch (e) { log("Audio Fail"); }
             }
             fallbackSpeak(text, lang);
         }
@@ -215,13 +227,13 @@
         }
 
         async function testVoice() {
-            log("Test Audio...");
-            await speak("Voice check complete.", 'en-US');
+            log("Test Natural Burmese...");
+            // Greeting in natural Burmese
+            await speak("မင်္ဂလာပါ၊ ကျွန်တော်ကတော့ သီဟ ဖြစ်ပါတယ်။ အခု အသံစနစ်က ပိုမို သဘာဝကျလာပါပြီ။", 'my');
         }
 
         function unlockAudio() {
             log("Audio Unlocked");
-            // FORCE UNLOCK for Android WebView
             masterAudio.play().then(() => { masterAudio.pause(); }).catch(() => {});
             if (window.speechSynthesis) window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
             window.removeEventListener('pointerdown', unlockAudio);
@@ -230,21 +242,20 @@
 
         function attach(id, lang, side) {
             const btn = document.getElementById(id);
-            btn.addEventListener('pointerdown', (e) => { 
-                e.preventDefault(); 
-                btn.setPointerCapture(e.pointerId); 
-                start(lang, side); 
-            });
-            btn.addEventListener('pointerup', (e) => { 
-                e.preventDefault(); 
-                btn.releasePointerCapture(e.pointerId); 
-                stopRecording(); 
-            });
+            btn.addEventListener('pointerdown', (e) => { e.preventDefault(); btn.setPointerCapture(e.pointerId); start(lang, side); });
+            btn.addEventListener('pointerup', (e) => { e.preventDefault(); btn.releasePointerCapture(e.pointerId); stopRecording(); });
         }
 
         attach('btnMM', 'my-MM', 'left');
         attach('btnENG', 'en-US', 'right');
         document.getElementById('menuBtn').addEventListener('click', () => document.getElementById('menu').classList.toggle('open'));
+        
+        document.getElementById('themeSw').addEventListener('change', async () => {
+            const isDark = document.getElementById('themeSw').checked;
+            document.body.classList.toggle('dark-mode', isDark);
+            if (StatusBar) StatusBar.setStyle({ style: isDark ? 'DARK' : 'LIGHT' }).catch(()=>{});
+        });
+
         document.addEventListener('deviceready', initSystem, false);
         setTimeout(() => { if (!SpeechRecognition && !recognition) initSystem(); }, 1500);
     </script>
