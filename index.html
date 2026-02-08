@@ -8,36 +8,59 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <link rel="icon" href="data:,"> <!-- Stop Favicon 404 -->
+    <link rel="icon" href="data:,">
     <script src="config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
     <style>
-        :root { --circle-size: clamp(220px, 55vw, 300px); }
+        :root { --circle-size: clamp(220px, 50vw, 300px); }
         .speaker-wrapper { width: var(--circle-size); height: var(--circle-size); }
+        
+        /* Fixed High-Contrast Status Area */
         .status-area {
-            position: absolute;
-            bottom: 115%;
-            width: 90vw;
+            position: fixed;
+            top: 15vh;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 85vw;
             max-width: 450px;
             background: var(--btn-white);
             padding: 25px;
-            border-radius: 30px;
-            box-shadow: 10px 10px 30px var(--shadow-dark), -10px -10px 30px var(--shadow-light);
-            transition: 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            min-height: 80px;
+            border-radius: 24px;
+            box-shadow: 12px 12px 25px var(--shadow-dark), -12px -12px 25px var(--shadow-light);
+            z-index: 500;
             display: flex;
             flex-direction: column;
+            align-items: center;
             justify-content: center;
-            left: 50%;
-            transform: translateX(-50%);
+            min-height: 100px;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
-        .transcription { font-size: clamp(18px, 5vw, 24px); font-weight: 700; line-height: 1.3; color: var(--text); text-align: center; }
-        .status-badge { font-size: 10px; font-weight: 900; letter-spacing: 2px; margin-bottom: 8px; color: var(--accent); opacity: 0.8; text-align: center; }
-        .active-left .status-area, .active-right .status-area { transform: scale(1.05) translateX(-50%); border: 2px solid var(--accent); }
+        
+        .transcription { 
+            font-size: clamp(18px, 4vw, 24px); 
+            font-weight: 700; 
+            color: var(--text); 
+            text-align: center;
+            width: 100%;
+        }
+
+        .status-badge { 
+            font-size: 10px; 
+            font-weight: 900; 
+            letter-spacing: 2px; 
+            margin-bottom: 12px; 
+            color: var(--accent); 
+            text-transform: uppercase;
+        }
+
+        body.active-left .status-area, body.active-right .status-area {
+            transform: translateX(-50%) scale(1.03);
+            border: 2px solid var(--accent);
+        }
     </style>
 </head>
 <body class="">
-    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.6;">System Ready</div>
+    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.6;">System Optimized</div>
     
     <div class="top-nav" id="menuBtn"><div class="nav-dot"></div></div>
     <div class="dropdown" id="menu">
@@ -71,7 +94,7 @@
         let curLang = 'en-US', currentTranscript = '';
         
         const { Haptics, StatusBar, App, SpeechRecognition } = (window.Capacitor && window.Capacitor.Plugins) ? window.Capacitor.Plugins : {};
-        let recognition = null; // WebSpeech fallback
+        let recognition = null;
 
         function log(msg) { logArea.innerText = msg; }
         function setUIState(state) { stateBadge.innerText = state; }
@@ -90,26 +113,21 @@
                 try { recognition.stop(); } catch(e) {}
             }
             const isCont = document.getElementById('contSw').checked;
-            if (isCont) setTimeout(() => start(curLang, curLang === 'my-MM' ? 'left' : 'right'), 600);
+            if (isCont) setTimeout(() => start(curLang, curLang === 'my-MM' ? 'left' : 'right'), 800);
         }
 
         async function initSystem() {
-            log("Initializing Engine...");
-            if (StatusBar) {
-                StatusBar.setOverlaysWebView({ overlay: true });
-                StatusBar.setStyle({ style: 'LIGHT' });
-            }
-            
+            log("Initializing...");
             if (SpeechRecognition) {
                 try {
                     const avail = await SpeechRecognition.available();
                     if (avail.available) {
                         await SpeechRecognition.requestPermissions();
-                        log("Android Engine Active");
+                        log("Native Mic Ready");
                     }
                 } catch (e) { log("Mic Not Ready"); }
-            } else if ('webkitSpeechRecognition' in window) {
-                log("Browser Engine Active");
+            } else if ('webkitSpeechRecognition' in window || 'speechRecognition' in window) {
+                log("Browser Mic Ready");
                 const SpeechReq = window.webkitSpeechRecognition || window.speechRecognition;
                 recognition = new SpeechReq();
                 recognition.continuous = true;
@@ -118,7 +136,9 @@
                     let full = '';
                     for (let i = 0; i < e.results.length; ++i) full += e.results[i][0].transcript;
                     currentTranscript = full.trim();
-                    textDisplay.innerText = currentTranscript || "Listening...";
+                    if (document.getElementById('textSw').checked) {
+                        textDisplay.innerText = currentTranscript || "Listening...";
+                    }
                 };
                 recognition.onend = () => { if (isRec) try { recognition.start(); } catch(e) {} };
             }
@@ -126,7 +146,7 @@
 
         async function start(lang, side) {
             if (isRec || isProcessing) return;
-            if (Haptics) Haptics.impact({ style: 'MEDIUM' });
+            if (Haptics) Haptics.impact({ style: 'MEDIUM' }).catch(()=>{});
 
             isRec = true; currentTranscript = ''; curLang = lang;
             setUIState('LISTENING');
@@ -138,7 +158,9 @@
                 SpeechRecognition.addListener('partialResults', (data) => {
                     if (data.matches && data.matches.length > 0) {
                         currentTranscript = data.matches[0];
-                        textDisplay.innerText = currentTranscript;
+                        if (document.getElementById('textSw').checked) {
+                            textDisplay.innerText = currentTranscript;
+                        }
                     }
                 });
                 try {
@@ -155,15 +177,18 @@
             isRec = false; isProcessing = true;
             document.body.classList.remove('active-left', 'active-right');
             setUIState('TRANSLATING');
-            if (Haptics) Haptics.impact({ style: 'LIGHT' });
+            if (Haptics) Haptics.impact({ style: 'LIGHT' }).catch(()=>{});
 
             if (SpeechRecognition) try { await SpeechRecognition.stop(); } catch(e) {}
             else if (recognition) try { recognition.stop(); } catch(e) {}
 
             setTimeout(async () => {
-                if (currentTranscript) await processPipeline(currentTranscript);
-                else hardReset();
-            }, 300);
+                if (currentTranscript) {
+                    await processPipeline(currentTranscript);
+                } else {
+                    hardReset();
+                }
+            }, 400);
         }
 
         async function processPipeline(text) {
@@ -173,7 +198,9 @@
                 const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`);
                 const data = await res.json();
                 const result = data[0].map(s => s[0]).join('').trim();
-                textDisplay.innerText = result;
+                if (document.getElementById('textSw').checked) {
+                    textDisplay.innerText = result;
+                }
                 await speak(result, tl);
             } catch (e) { hardReset(); }
         }
@@ -206,7 +233,7 @@
 
         async function testVoice() {
             log("Testing Voice...");
-            await speak("System is ready on your laptop.", 'en-US');
+            await speak("System is ready.", 'en-US');
         }
 
         function unlockAudio() {
@@ -226,6 +253,15 @@
         attach('btnENG', 'en-US', 'right');
         document.getElementById('menuBtn').addEventListener('click', () => document.getElementById('menu').classList.toggle('open'));
         
+        // Theme Toggle Fix
+        document.getElementById('themeSw').addEventListener('change', async () => {
+            const isDark = document.getElementById('themeSw').checked;
+            document.body.classList.toggle('dark-mode', isDark);
+            if (StatusBar) {
+                StatusBar.setStyle({ style: isDark ? 'DARK' : 'LIGHT' }).catch(()=>{});
+            }
+        });
+
         document.addEventListener('deviceready', initSystem, false);
         setTimeout(() => { if (!SpeechRecognition && !recognition) initSystem(); }, 1500);
     </script>
