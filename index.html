@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike Bulletproof</title>
+    <title>PyawLike Fluent Pro</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
@@ -23,12 +23,13 @@
         }
         .transcription { font-size: 28px; font-weight: 800; color: var(--text); line-height: 1.2; width: 100%; }
         .status-badge { font-size: 12px; font-weight: 900; letter-spacing: 3px; color: var(--accent); margin-bottom: 15px; text-transform: uppercase; opacity: 0.8; }
-        .debug-overlay { position:fixed; top:0; left:0; right:0; background:rgba(255,0,0,0.8); color:white; font-size:10px; padding:5px; z-index:1000000; display:none; }
+        .voice-quality { font-size: 10px; font-weight: 900; margin-top: 10px; padding: 4px 10px; border-radius: 20px; background: #eee; color: #666; }
+        .voice-ai { background: #e6f4ea; color: #1e8e3e; }
+        .voice-sys { background: #feefee; color: #d93025; }
     </style>
 </head>
 <body class="">
-    <div id="error-log" class="debug-overlay"></div>
-    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.1);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:100000;border-radius:5px;opacity:0.8;">System Ready</div>
+    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:100000;border-radius:5px;opacity:0.6;">System Secure</div>
     
     <div class="top-nav" id="menuBtn"><div class="nav-dot"></div></div>
     <div class="dropdown" id="menu">
@@ -36,13 +37,14 @@
         <div class="menu-item">SHOW TEXT <input type="checkbox" id="textSw" checked></div>
         <div class="menu-item">NATURAL VOICE <input type="checkbox" id="naturalSw" checked></div>
         <div class="menu-item">CONTINUOUS <input type="checkbox" id="contSw"></div>
-        <button onclick="testVoice()" style="background:var(--accent);color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:10px;cursor:pointer;font-size:12px;">TEST NILAR VOICE</button>
+        <button onclick="testVoice()" style="background:var(--accent);color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:10px;cursor:pointer;font-size:12px;">TEST NATURAL BURMESE</button>
         <button onclick="hardReset()" style="background:#ff4444;color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:15px;cursor:pointer;font-size:12px;">HARD RESET SYSTEM</button>
     </div>
 
     <div class="status-area">
         <div class="status-badge" id="stateBadge">READY</div>
         <div class="transcription" id="textDisplay">TAP TO START</div>
+        <div id="qualityBadge" class="voice-quality voice-ai">VOICE: READY</div>
     </div>
 
     <div class="speaker-wrapper">
@@ -54,18 +56,16 @@
 
     <script>
         const logArea = document.getElementById('debug-log');
-        const errArea = document.getElementById('error-log');
         const textDisplay = document.getElementById('textDisplay');
         const stateBadge = document.getElementById('stateBadge');
+        const qualityBadge = document.getElementById('qualityBadge');
         let masterAudio = new Audio();
         
         let isRec = false, isProcessing = false;
         let curLang = 'en-US', currentTranscript = '';
         let recognition = null;
-        let watchdog = null;
 
         function log(msg) { logArea.innerText = msg; console.log(msg); }
-        function fatal(msg) { errArea.innerText = "FATAL: " + msg; errArea.style.display = 'block'; }
         function setUIState(state) { stateBadge.innerText = state; }
 
         async function hardReset() {
@@ -73,12 +73,10 @@
             document.body.classList.remove('active-left', 'active-right');
             setUIState('READY');
             textDisplay.innerText = "READY";
-            errArea.style.display = 'none';
             if (window.speechSynthesis) window.speechSynthesis.cancel();
             masterAudio.pause();
             masterAudio.src = "";
             if (recognition) { try { recognition.stop(); } catch(e) {} }
-            if (watchdog) clearTimeout(watchdog);
         }
 
         async function initSystem() {
@@ -89,27 +87,26 @@
                 recognition.interimResults = true;
                 recognition.onresult = (e) => {
                     let full = '';
-                    for (let i = e.resultIndex; i < e.results.length; ++i) {
-                        full += e.results[i][0].transcript;
-                    }
+                    for (let i = e.resultIndex; i < e.results.length; ++i) full += e.results[i][0].transcript;
                     currentTranscript = full.trim();
                     textDisplay.innerText = currentTranscript || "Listening...";
                 };
-                recognition.onerror = (e) => log("Mic Error: " + e.error);
                 recognition.onend = () => { if (isRec) try { recognition.start(); } catch(e) {} };
-                log("Engine Initialized");
+                log("System Initialized");
             }
         }
 
         async function start(lang, side) {
             if (isRec || isProcessing) return;
+            // Prime audio
+            masterAudio.play().then(() => masterAudio.pause()).catch(()=>{});
             isRec = true; currentTranscript = ''; curLang = lang;
             setUIState('LISTENING');
             document.body.classList.add(side === 'left' ? 'active-left' : 'active-right');
             textDisplay.innerText = "Listening...";
             if (recognition) {
                 recognition.lang = curLang;
-                try { recognition.start(); } catch(e) { fatal("Mic Start Fail"); }
+                try { recognition.start(); } catch(e) {}
             }
         }
 
@@ -120,82 +117,68 @@
             setUIState('THINKING');
             if (recognition) { try { recognition.stop(); } catch(e) {} }
 
-            // Emergency Recovery Watchdog
-            watchdog = setTimeout(() => { if (isProcessing) hardReset(); }, 12000);
-
             setTimeout(async () => {
                 if (currentTranscript) {
-                    await processSecurePipeline(currentTranscript);
-                } else {
-                    log("No speech detected");
-                    hardReset();
-                }
+                    try {
+                        const isMM = curLang.startsWith('my');
+                        const sl = isMM ? 'my' : 'en', tl = isMM ? 'en' : 'my';
+                        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(currentTranscript)}`;
+                        const res = await fetch(url);
+                        const data = await res.json();
+                        const result = data[0].map(s => s[0]).join('').trim();
+                        textDisplay.innerText = result;
+                        await speakNeural(result, tl);
+                    } catch (e) { log("Error: " + e.message); hardReset(); }
+                } else { hardReset(); }
             }, 600);
         }
 
-        async function processSecurePipeline(text) {
-            const isMM = curLang.startsWith('my');
-            const sl = isMM ? 'my' : 'en', tl = isMM ? 'en' : 'my';
+        async function speakNeural(text, lang) {
+            setUIState('SPEAKING');
+            const natural = document.getElementById('naturalSw').checked;
             
-            try {
-                log(`Attempting Translation: ${sl} to ${tl}`);
-                // Try Strategy 1: The "client=gtx" high-speed endpoint
-                const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`;
-                const res = await fetch(url);
-                if (!res.ok) throw new Error("API Blocked");
-                
-                const data = await res.json();
-                if (!data || !data[0] || !data[0][0]) throw new Error("Invalid Data");
-                
-                const result = data[0].map(s => s[0]).join('').trim();
-                textDisplay.innerText = result;
-                log("Translation OK");
-                await speakNilar(result, tl);
-            } catch (e) {
-                log("Strategy 1 Failed, trying Strategy 2...");
+            if (natural) {
                 try {
-                    // Try Strategy 2: Different Client ID
-                    const url2 = `https://translate.google.com/translate_a/single?client=at&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`;
-                    const res2 = await fetch(url2);
-                    const data2 = await res2.json();
-                    const result2 = data2[0][0][0];
-                    textDisplay.innerText = result2;
-                    await speakNilar(result2, tl);
-                } catch (e2) {
-                    fatal("TRANSLATION SYSTEM BLOCKED");
-                    setTimeout(hardReset, 3000);
+                    log("Nilar Neural Load...");
+                    const TTSClass = window.EdgeTTS?.EdgeTTS || window.EdgeTTS?.UniversalEdgeTTS || (window.EdgeTTS && window.EdgeTTS.default) || window.EdgeTTS;
+                    if (!TTSClass) throw new Error("Library Error");
+                    
+                    const tts = new TTSClass();
+                    const voice = (lang === 'my' || lang === 'my-MM') ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
+                    
+                    const audioData = await tts.synthesize(text, voice);
+                    const blob = new Blob([audioData], { type: 'audio/mp3' });
+                    const url = URL.createObjectURL(blob);
+                    
+                    masterAudio.src = url;
+                    masterAudio.onended = () => { URL.revokeObjectURL(url); finishTurn(); };
+                    masterAudio.onerror = () => { throw new Error("Audio Fail"); };
+                    
+                    qualityBadge.innerText = "VOICE: AI (NATURAL)";
+                    qualityBadge.className = "voice-quality voice-ai";
+                    
+                    await masterAudio.play();
+                    return;
+                } catch (e) {
+                    log("Neural Fail: " + e.message);
                 }
             }
+            fallbackSpeak(text, lang);
         }
 
-        async function speakNilar(text, lang) {
-            setUIState('SPEAKING');
-            try {
-                log("Nilar Neural Load...");
-                const TTS = window.EdgeTTS?.EdgeTTS || window.EdgeTTS;
-                const tts = new TTS();
-                const voice = (lang === 'my') ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
-                
-                const audioData = await tts.synthesize(text, voice);
-                const blob = new Blob([audioData], { type: 'audio/mp3' });
-                const url = URL.createObjectURL(blob);
-                
-                masterAudio.src = url;
-                masterAudio.onended = () => { URL.revokeObjectURL(url); finishTurn(); };
-                masterAudio.onerror = () => { URL.revokeObjectURL(url); throw new Error("Audio Driver Error"); };
-                await masterAudio.play();
-            } catch (e) {
-                log("Nilar Fail: " + e.message);
-                // System Fallback if Neural Fails
-                const u = new SpeechSynthesisUtterance(text);
-                u.lang = (lang === 'my') ? 'my-MM' : 'en-US';
-                u.onend = () => finishTurn();
-                window.speechSynthesis.speak(u);
-            }
+        function fallbackSpeak(text, lang) {
+            log("System Robot Fallback");
+            qualityBadge.innerText = "VOICE: ROBOT (BAD)";
+            qualityBadge.className = "voice-quality voice-sys";
+            
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = (lang === 'my' || lang === 'my-MM') ? 'my-MM' : 'en-US';
+            u.pitch = 1.1; // Make it sound slightly more human
+            u.onend = () => finishTurn();
+            window.speechSynthesis.speak(u);
         }
 
         function finishTurn() {
-            if (watchdog) clearTimeout(watchdog);
             const isCont = document.getElementById('contSw').checked;
             if (isCont) {
                 isProcessing = false;
@@ -209,13 +192,13 @@
         }
 
         async function testVoice() {
-            log("Test Init...");
-            await speakNilar("System test successful.", 'en-US');
+            log("Testing Nilar...");
+            await speakNeural("မင်္ဂလာပါ၊ ကျွန်မနာမည် နီလာ ဖြစ်ပါတယ်။ အခု အသံစနစ်က ပိုမို သဘာဝကျလာပါပြီ။", 'my');
         }
 
         function unlockAudio() {
-            log("Audio Live");
-            masterAudio.play().then(() => { masterAudio.pause(); }).catch(()=>{});
+            log("Unlocked");
+            masterAudio.play().then(() => masterAudio.pause()).catch(()=>{});
             window.removeEventListener('pointerdown', unlockAudio);
         }
         window.addEventListener('pointerdown', unlockAudio);
