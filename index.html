@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike Pro</title>
+    <title>PyawLike Chat-Voice</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="data:,">
     <script src="config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
 </head>
@@ -56,21 +57,12 @@
         let isRecording = false, recognition = null;
         let naturalMode = localStorage.getItem('natural_mode') === 'true';
 
-        // --- UI UPDATE FOR STATUS BUTTON ---
         function updateStatusUI() {
             const hasKey = geminiInput.value.trim().length > 5;
             if (naturalMode) {
-                if (hasKey) {
-                    statusBtn.className = "status-switch active";
-                    statusIcon.innerText = "✓";
-                } else {
-                    statusBtn.className = "status-switch error";
-                    statusIcon.innerText = "✕";
-                }
-            } else {
-                statusBtn.className = "status-switch";
-                statusIcon.innerText = "✕";
-            }
+                if (hasKey) { statusBtn.className = "status-switch active"; statusIcon.innerText = "✓"; }
+                else { statusBtn.className = "status-switch error"; statusIcon.innerText = "✕"; }
+            } else { statusBtn.className = "status-switch"; statusIcon.innerText = "✕"; }
         }
 
         statusBtn.addEventListener('click', () => {
@@ -170,12 +162,43 @@
             } catch (e) { console.error("Trans Fail"); }
         }
 
+        // --- AUDIO HELPERS ---
+        function base64ToWav(base64, sampleRate = 24000) {
+            const binaryString = atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
+            
+            // Add simple WAV header to PCM data
+            const header = new ArrayBuffer(44);
+            const view = new DataView(header);
+            const writeString = (offset, string) => {
+                for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i));
+            };
+            writeString(0, 'RIFF');
+            view.setUint32(4, 32 + len, true);
+            writeString(8, 'WAVE');
+            writeString(12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true); // PCM
+            view.setUint16(22, 1, true); // Mono
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, sampleRate * 2, true);
+            view.setUint16(32, 2, true);
+            view.setUint16(34, 16, true);
+            writeString(36, 'data');
+            view.setUint32(40, len, true);
+            
+            return new Blob([header, bytes], { type: 'audio/wav' });
+        }
+
         async function playOutput(text, lang) {
             const isBurmese = (lang === 'my' || lang === 'my-MM');
             const hasKey = geminiInput.value.trim().length > 5;
 
+            // --- 1. GEMINI CHAT VOICE (Aoede) ---
             if (naturalMode && isBurmese && hasKey) {
-                const cacheId = "gemini_" + text;
+                const cacheId = "gemini_live_" + text;
                 const cached = await getCache(cacheId);
                 if (cached) {
                     const blob = new Blob([cached], { type: 'audio/wav' });
@@ -188,28 +211,34 @@
                     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiInput.value}`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            contents: [{ 
-                                role: "user",
-                                parts: [{ text: `You are a native Burmese speaker. Speak the following text with perfect natural fluency, native intonation, and human-like emotion. Do not sound robotic. Only provide the audio output for this exact text: ${text}` }] 
-                            }],
+                            contents: [{ role: "user", parts: [{ text: `Read this text out loud in Burmese: ${text}` }] }],
                             generationConfig: { 
-                                responseMimeType: "audio/wav"
+                                responseModalities: ["AUDIO"],
+                                speechConfig: {
+                                    voiceConfig: {
+                                        prebuiltVoiceConfig: {
+                                            voiceName: "Aoede" // Natural Gemini Chat Voice
+                                        }
+                                    }
+                                }
                             }
                         })
                     });
                     const data = await res.json();
-                    const audioData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-                    if (audioData) {
-                        const binary = Uint8Array.from(atob(audioData), c => c.charCodeAt(0));
-                        await setCache(cacheId, binary);
-                        const blob = new Blob([binary], { type: 'audio/wav' });
+                    const audioBase64 = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+                    
+                    if (audioBase64) {
+                        const blob = base64ToWav(audioBase64);
+                        const arrayBuffer = await blob.arrayBuffer();
+                        await setCache(cacheId, new Uint8Array(arrayBuffer));
                         audioObj.src = URL.createObjectURL(blob);
                         await audioObj.play();
                         return;
                     }
-                } catch (e) { console.warn("Gemini Fail..."); }
+                } catch (e) { console.warn("Gemini Chat Voice Fail..."); }
             }
 
+            // --- 2. EDGE TTS FALLBACK ---
             try {
                 const EdgeClass = window.EdgeTTS?.EdgeTTS || window.EdgeTTS;
                 if (EdgeClass) {
@@ -222,6 +251,7 @@
                 }
             } catch (e) {}
 
+            // --- 3. SYSTEM FALLBACK ---
             const u = new SpeechSynthesisUtterance(text);
             u.lang = isBurmese ? 'my-MM' : 'en-US';
             window.speechSynthesis.speak(u);
