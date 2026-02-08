@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike - Safe Mode</title>
+    <title>PyawLike - Hybrid Mic</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
@@ -17,28 +17,15 @@
     </div>
 
     <div class="dropdown-menu" id="dropdownMenu">
-        <div class="menu-item">
-            <span>DARK MODE</span>
-            <label class="switch small-switch"><input type="checkbox" id="themeSwitch" checked><span class="slider"></span></label>
-        </div>
-        <div class="menu-item">
-            <span>SHOW TEXT</span>
-            <label class="switch small-switch"><input type="checkbox" id="showTextSwitch"><span class="slider"></span></label>
-        </div>
-        <div class="menu-item">
-            <span>NATURAL VOICE</span>
-            <label class="switch small-switch"><input type="checkbox" id="naturalSwitch"><span class="slider"></span></label>
-        </div>
+        <div class="menu-item"><span>DARK MODE</span><label class="switch small-switch"><input type="checkbox" id="themeSwitch" checked><span class="slider"></span></label></div>
+        <div class="menu-item"><span>SHOW TEXT</span><label class="switch small-switch"><input type="checkbox" id="showTextSwitch"><span class="slider"></span></label></div>
+        <div class="menu-item"><span>NATURAL VOICE</span><label class="switch small-switch"><input type="checkbox" id="naturalSwitch"><span class="slider"></span></label></div>
     </div>
 
     <div class="status-area">
-        <div class="horizontal-waves" id="hWaves">
-            <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
-        </div>
+        <div class="horizontal-waves" id="hWaves"><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
         <div class="text-display-area" id="transcription"></div>
-        <div class="processing-loader" id="pLoader">
-            <div class="loader-dot"></div><div class="loader-dot"></div><div class="loader-dot"></div>
-        </div>
+        <div class="processing-loader" id="pLoader"><div class="loader-dot"></div><div class="loader-dot"></div><div class="loader-dot"></div></div>
     </div>
 
     <div class="speaker-wrapper" id="speakerWrapper">
@@ -49,198 +36,135 @@
     </div>
 
     <script>
-        // --- 1. SETUP ---
+        // --- SETUP ---
         const btnMM = document.getElementById('btnMM'), btnENG = document.getElementById('btnENG');
         const hWaves = document.getElementById('hWaves'), pLoader = document.getElementById('pLoader'), transcription = document.getElementById('transcription');
         const errorToast = document.getElementById('error-toast'), permStatus = document.getElementById('permStatus');
         const showTextSwitch = document.getElementById('showTextSwitch'), themeSwitch = document.getElementById('themeSwitch'), naturalSwitch = document.getElementById('naturalSwitch');
         
-        // GLOBAL AUDIO PLAYER
         const masterAudio = new Audio();
         let isRecording = false, finalBuffer = '', currentMicLang = 'en-US';
 
-        // --- 2. CACHING SYSTEM (Offline Memory) ---
-        const AppCache = {
-            get: (text, targetLang) => localStorage.getItem(`pyawlike_${text.trim().toLowerCase()}_${targetLang}`),
-            set: (text, targetLang, result) => { try { localStorage.setItem(`pyawlike_${text.trim().toLowerCase()}_${targetLang}`, result); } catch(e){} }
-        };
+        // 🛑 NATIVE MIC PLUGIN 🛑
+        const NativeSpeech = window.Capacitor ? Capacitor.Plugins.SpeechRecognition : null;
 
-        // --- 3. UI MANAGEMENT ---
-        function updateUIState(state) {
-            pLoader.classList.toggle('active', state === 'processing');
-            if (state === 'listening') {
-                if (showTextSwitch.checked) {
-                    hWaves.classList.remove('active');
-                    transcription.classList.add('active');
-                    transcription.innerHTML = '<div class="live-line" style="opacity:0.5">Listening...</div>';
-                } else {
-                    transcription.classList.remove('active');
-                    hWaves.classList.add('active');
-                }
-            } else if (state === 'ready') {
-                hWaves.classList.remove('active');
-                if (!showTextSwitch.checked) transcription.classList.remove('active');
-            }
-        }
-
-        // --- 4. TRANSLATION (FREE GOOGLE API) ---
-        async function processTranslation(text) {
-            if (!text || !text.trim()) { resetUI(); return; }
-            
-            const isMM = currentMicLang === 'my-MM';
-            const sl = isMM ? 'my' : 'en';
-            const tl = isMM ? 'en' : 'my';
-
-            // A. Check Cache
-            const cached = AppCache.get(text, tl);
-            if (cached) {
-                console.log("Cache Hit");
-                updateDisplay(cached);
-                await speakLogic(cached, tl);
-                return;
-            }
-
-            // B. Google Translate (Free)
-            try {
-                const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`;
-                const resp = await fetch(url);
-                const data = await resp.json();
-                const translated = data[0].map(s => s[0]).join('').trim();
-                
-                AppCache.set(text, tl, translated);
-                updateDisplay(translated);
-                await speakLogic(translated, tl);
-            } catch (e) {
-                showError("Offline & No Cache");
-                resetUI();
-            }
-        }
-
-        // --- 5. THE "SAFE" VOICE ENGINE ---
-        async function speakLogic(text, lang) {
-            console.log(`Speaking: ${text}`);
-
-            // A. NATURAL MODE (PAID / SERVER) - Only if switch is ON
-            if (naturalSwitch.checked) {
+        // --- 1. FORCE PERMISSIONS (THE FIX) ---
+        async function checkPerms() {
+            if (NativeSpeech) {
                 try {
-                    const serverUrl = window.ENV?.SERVER_URL || '';
-                    const resp = await fetch(`${serverUrl}/api/tts`, {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ text, lang })
-                    });
-                    const data = await resp.json();
-                    if (data.audio) {
-                        const blob = new Blob([Uint8Array.from(atob(data.audio), c => c.charCodeAt(0))], { type: 'audio/wav' });
-                        masterAudio.src = URL.createObjectURL(blob);
-                        masterAudio.play();
-                        masterAudio.onended = resetUI;
-                        return;
-                    }
-                } catch (e) { console.warn("Gemini Failed, falling back to Free Mode"); }
+                    // This line forces the popup to appear
+                    const status = await NativeSpeech.requestPermissions();
+                    updateSwitch(status.speechRecognition === 'granted' || status.microphone === 'granted');
+                } catch (e) { console.error("Perm Error:", e); }
             }
-
-            // B. EDGE TTS (High Quality Free - NO INSTALL NEEDED)
-            // This runs in pure JS, so it won't break the build.
-            try {
-                if (typeof EdgeTTS !== 'undefined') {
-                    const voice = lang === 'my' ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
-                    const tts = new EdgeTTS.EdgeTTS();
-                    await tts.speak({ text: text, voice: voice });
-                    
-                    // Simple timeout since EdgeTTS doesn't give a callback easily
-                    setTimeout(resetUI, (text.length * 100) + 1500); 
-                    return;
-                }
-            } catch(e) { console.warn("EdgeTTS Failed:", e); }
-
-            // C. SYSTEM FALLBACK (Offline / Guaranteed)
-            const u = new SpeechSynthesisUtterance(text);
-            u.lang = lang === 'my' ? 'my-MM' : 'en-US';
-            u.onend = resetUI;
-            window.speechSynthesis.speak(u);
         }
 
-        // --- 6. THE "WAKE UP" HACK ---
-        // Android blocks sound if you don't play something immediately.
-        // This function plays silence instantly to "unlock" the speakers.
-        function wakeUpAudio() {
-            const silent = new SpeechSynthesisUtterance("");
-            window.speechSynthesis.speak(silent);
-        }
-
-        // --- 7. CORE FUNCTIONS ---
-        // We use the browser's Web Speech API (Safe Mode) because native plugins caused the crash.
-        const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        const recognition = Recognition ? new Recognition() : null;
-
-        if (recognition) {
-            recognition.continuous = false;
-            recognition.interimResults = true;
-            
-            recognition.onresult = (event) => {
-                const transcript = Array.from(event.results)
-                    .map(result => result[0])
-                    .map(result => result.transcript)
-                    .join('');
-                finalBuffer = transcript;
-                if (showTextSwitch.checked) updateDisplay(finalBuffer);
-            };
-
-            recognition.onend = () => {
-                if (isRecording) stopRecording(); // Handle auto-stop
-            };
-        }
-
-        function startRecording(lang) {
-            wakeUpAudio(); // <--- UNLOCK AUDIO
+        // --- 2. RECORDING LOGIC ---
+        async function startRecording(lang) {
+            wakeUpAudio();
             currentMicLang = lang;
             updateUIState('listening');
-            isRecording = true;
-            if (recognition) {
-                recognition.lang = lang;
-                try { recognition.start(); } catch(e) {}
+            
+            if (NativeSpeech) {
+                // Use Native Plugin
+                try {
+                    await NativeSpeech.start({ language: lang, maxResults: 1, partialResults: true, popup: false });
+                    NativeSpeech.addListener('partialResults', (data) => {
+                        if (data.matches && data.matches.length > 0) {
+                            finalBuffer = data.matches[0];
+                            if (showTextSwitch.checked) updateDisplay(finalBuffer);
+                        }
+                    });
+                    isRecording = true;
+                } catch (e) { resetUI(); }
             }
         }
 
-        function stopRecording() {
+        async function stopRecording() {
             updateUIState('processing');
             isRecording = false;
-            if (recognition) recognition.stop();
-            
+            if (NativeSpeech) {
+                try { await NativeSpeech.stop(); NativeSpeech.removeAllListeners(); } catch(e){}
+            }
             setTimeout(() => {
                 if (finalBuffer) processTranslation(finalBuffer);
                 else resetUI();
             }, 500);
         }
 
-        function updateDisplay(text) {
-            if (showTextSwitch.checked) {
-                transcription.classList.add('active');
-                transcription.innerHTML = `<div class="live-line">${text}</div>`;
-            }
+        // --- 3. TRANSLATION & TTS ---
+        const AppCache = {
+            get: (text, tl) => localStorage.getItem(`pyawlike_${text.trim().toLowerCase()}_${tl}`),
+            set: (text, tl, res) => { try { localStorage.setItem(`pyawlike_${text.trim().toLowerCase()}_${tl}`, res); } catch(e){} }
+        };
+
+        async function processTranslation(text) {
+            if (!text || !text.trim()) { resetUI(); return; }
+            const isMM = currentMicLang === 'my-MM';
+            const sl = isMM ? 'my' : 'en'; const tl = isMM ? 'en' : 'my';
+
+            const cached = AppCache.get(text, tl);
+            if (cached) { updateDisplay(cached); await speakLogic(cached, tl); return; }
+
+            try {
+                const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`;
+                const resp = await fetch(url);
+                const data = await resp.json();
+                const translated = data[0].map(s => s[0]).join('').trim();
+                AppCache.set(text, tl, translated);
+                updateDisplay(translated);
+                await speakLogic(translated, tl);
+            } catch (e) { showError("Network Error"); resetUI(); }
         }
 
+        async function speakLogic(text, lang) {
+            if (naturalSwitch.checked) {
+                try {
+                    const serverUrl = window.ENV?.SERVER_URL || '';
+                    const resp = await fetch(`${serverUrl}/api/tts`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ text, lang }) });
+                    const data = await resp.json();
+                    if (data.audio) {
+                        const blob = new Blob([Uint8Array.from(atob(data.audio), c => c.charCodeAt(0))], { type: 'audio/wav' });
+                        masterAudio.src = URL.createObjectURL(blob);
+                        masterAudio.play(); masterAudio.onended = resetUI; return;
+                    }
+                } catch (e) {}
+            }
+            try {
+                if (typeof EdgeTTS !== 'undefined') {
+                    const voice = lang === 'my' ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
+                    const tts = new EdgeTTS.EdgeTTS();
+                    await tts.speak({ text: text, voice: voice });
+                    setTimeout(resetUI, (text.length * 100) + 1500); return;
+                }
+            } catch(e) {}
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = lang === 'my' ? 'my-MM' : 'en-US';
+            u.onend = resetUI; window.speechSynthesis.speak(u);
+        }
+
+        function wakeUpAudio() { const s = new SpeechSynthesisUtterance(""); window.speechSynthesis.speak(s); }
+        function updateUIState(state) {
+            pLoader.classList.toggle('active', state === 'processing');
+            if (state === 'listening') {
+                if (showTextSwitch.checked) { hWaves.classList.remove('active'); transcription.classList.add('active'); transcription.innerHTML = '<div class="live-line" style="opacity:0.5">Listening...</div>'; }
+                else { transcription.classList.remove('active'); hWaves.classList.add('active'); }
+            } else if (state === 'ready') { hWaves.classList.remove('active'); if (!showTextSwitch.checked) transcription.classList.remove('active'); }
+        }
+        function updateDisplay(text) { if (showTextSwitch.checked) { transcription.classList.add('active'); transcription.innerHTML = `<div class="live-line">${text}</div>`; } }
         function resetUI() { updateUIState('ready'); finalBuffer = ''; }
         function showError(msg) { errorToast.textContent = msg; errorToast.style.display = 'block'; setTimeout(()=>errorToast.style.display='none', 3000); }
         function updateSwitch(on) { permStatus.textContent = on ? 'ON' : 'ERR'; permStatus.classList.toggle('active', on); }
 
-        // LISTENERS
         btnMM.addEventListener('mousedown', (e) => { e.preventDefault(); startRecording('my-MM'); });
         btnMM.addEventListener('mouseup', stopRecording);
-        btnMM.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording('my-MM'); }); // Mobile Touch
-        btnMM.addEventListener('touchend', stopRecording);
-
         btnENG.addEventListener('mousedown', (e) => { e.preventDefault(); startRecording('en-US'); });
         btnENG.addEventListener('mouseup', stopRecording);
-        btnENG.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording('en-US'); }); // Mobile Touch
-        btnENG.addEventListener('touchend', stopRecording);
-        
         document.getElementById('navDot').addEventListener('click', () => document.getElementById('dropdownMenu').classList.toggle('active'));
         themeSwitch.addEventListener('change', (e) => document.body.classList.toggle('dark-mode', e.target.checked));
         
-        // Initial Check
-        if (recognition) updateSwitch(true);
+        // 🚀 CHECK PERMISSIONS ON START 🚀
+        (async()=>{ await checkPerms(); })();
     </script>
 </body>
 </html>
