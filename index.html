@@ -79,7 +79,7 @@
         geminiInput.value = localStorage.getItem('gemini_key') || '';
         updateStatusUI();
 
-        // --- CACHE SYSTEM ---
+        // --- CACHE ---
         let db;
         const dbReq = indexedDB.open("VoiceCache", 1);
         dbReq.onupgradeneeded = (e) => e.target.result.createObjectStore("audio", { keyPath: "id" });
@@ -162,43 +162,13 @@
             } catch (e) { console.error("Trans Fail"); }
         }
 
-        // --- AUDIO HELPERS ---
-        function base64ToWav(base64, sampleRate = 24000) {
-            const binaryString = atob(base64);
-            const len = binaryString.length;
-            const bytes = new Uint8Array(len);
-            for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
-            
-            // Add simple WAV header to PCM data
-            const header = new ArrayBuffer(44);
-            const view = new DataView(header);
-            const writeString = (offset, string) => {
-                for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i));
-            };
-            writeString(0, 'RIFF');
-            view.setUint32(4, 32 + len, true);
-            writeString(8, 'WAVE');
-            writeString(12, 'fmt ');
-            view.setUint32(16, 16, true);
-            view.setUint16(20, 1, true); // PCM
-            view.setUint16(22, 1, true); // Mono
-            view.setUint32(24, sampleRate, true);
-            view.setUint32(28, sampleRate * 2, true);
-            view.setUint16(32, 2, true);
-            view.setUint16(34, 16, true);
-            writeString(36, 'data');
-            view.setUint32(40, len, true);
-            
-            return new Blob([header, bytes], { type: 'audio/wav' });
-        }
-
         async function playOutput(text, lang) {
             const isBurmese = (lang === 'my' || lang === 'my-MM');
             const hasKey = geminiInput.value.trim().length > 5;
 
-            // --- 1. GEMINI CHAT VOICE (Aoede) ---
+            // --- 1. GEMINI AOEDE VOICE (With Stable Header Logic) ---
             if (naturalMode && isBurmese && hasKey) {
-                const cacheId = "gemini_live_" + text;
+                const cacheId = "aoede_" + text;
                 const cached = await getCache(cacheId);
                 if (cached) {
                     const blob = new Blob([cached], { type: 'audio/wav' });
@@ -211,31 +181,26 @@
                     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiInput.value}`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            contents: [{ role: "user", parts: [{ text: `Read this text out loud in Burmese: ${text}` }] }],
+                            contents: [{ role: "user", parts: [{ text: `Read this Burmese text naturally: ${text}` }] }],
                             generationConfig: { 
                                 responseModalities: ["AUDIO"],
-                                speechConfig: {
-                                    voiceConfig: {
-                                        prebuiltVoiceConfig: {
-                                            voiceName: "Aoede" // Natural Gemini Chat Voice
-                                        }
-                                    }
-                                }
+                                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } }
                             }
                         })
                     });
                     const data = await res.json();
-                    const audioBase64 = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+                    const audioBase64 = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
                     
                     if (audioBase64) {
-                        const blob = base64ToWav(audioBase64);
-                        const arrayBuffer = await blob.arrayBuffer();
-                        await setCache(cacheId, new Uint8Array(arrayBuffer));
+                        // Gemini wav already has header if requested correctly, or use raw data
+                        const binary = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
+                        await setCache(cacheId, binary);
+                        const blob = new Blob([binary], { type: 'audio/wav' });
                         audioObj.src = URL.createObjectURL(blob);
                         await audioObj.play();
                         return;
                     }
-                } catch (e) { console.warn("Gemini Chat Voice Fail..."); }
+                } catch (e) { console.warn("Gemini Chat Voice Fail, trying Edge..."); }
             }
 
             // --- 2. EDGE TTS FALLBACK ---
