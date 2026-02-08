@@ -9,6 +9,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
+    <!-- Edge TTS Library -->
+    <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
 </head>
 <body class="dark-mode">
     
@@ -73,16 +75,6 @@
             audioObj.play().then(() => { audioObj.pause(); audioObj.currentTime = 0; }).catch(()=>{});
         }
 
-        async function hardReset() {
-            isRec = false; isProcessing = false;
-            document.body.classList.remove('active-left', 'active-right');
-            textDisplay.innerText = "";
-            if (window.speechSynthesis) window.speechSynthesis.cancel();
-            masterAudio.pause();
-            if (nativeMic) { try { await nativeMic.stop(); nativeMic.removeAllListeners(); } catch(e){} }
-            else if (window.rec) { window.rec.stop(); }
-        }
-
         async function toggleFS() {
             if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
             else document.exitFullscreen().catch(()=>{});
@@ -92,7 +84,7 @@
 
         function initMic(lang) {
             const Speech = window.webkitSpeechRecognition || window.speechRecognition;
-            if (!Speech) { return null; }
+            if (!Speech) return null;
             
             const rec = new Speech();
             rec.lang = lang;
@@ -128,7 +120,7 @@
                 }
             };
 
-            rec.onerror = (e) => { isRecording = false; updateUI(false); };
+            rec.onerror = () => { isRecording = false; updateUI(false); };
             return rec;
         }
 
@@ -140,19 +132,40 @@
                 const data = await res.json();
                 const result = data[0].map(s => s[0]).join('').trim();
                 textDisplay.innerText = result;
-                
                 setStatus("SPEAKING...");
                 playOutput(result, tl);
             } catch (e) { setStatus("TRANS FAIL"); }
         }
 
-        function playOutput(text, lang) {
+        async function playOutput(text, lang) {
+            // 1. TRY EDGE TTS (Best Quality)
+            try {
+                const EdgeClass = window.EdgeTTS?.EdgeTTS || window.EdgeTTS;
+                if (EdgeClass) {
+                    const tts = new EdgeClass();
+                    const voice = (lang === 'my' || lang === 'my-MM') ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
+                    const audioData = await tts.synthesize(text, voice);
+                    const blob = new Blob([audioData], { type: 'audio/mp3' });
+                    const url = URL.createObjectURL(blob);
+                    
+                    audioObj.src = url;
+                    audioObj.onended = () => { URL.revokeObjectURL(url); setStatus("READY"); updateUI(false); };
+                    await audioObj.play();
+                    return;
+                }
+            } catch (e) {
+                console.warn("Edge Fail, falling back to Google...");
+            }
+
+            // 2. FALLBACK TO GOOGLE TTS (Reliable)
             const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${lang}&client=tw-ob`;
             audioObj.src = url;
             audioObj.play().catch(e => {
+                // 3. FINAL FALLBACK: SYSTEM TTS
                 const u = new SpeechSynthesisUtterance(text);
                 u.volume = 1.0;
                 u.lang = lang === 'my' ? 'my-MM' : 'en-US';
+                u.onend = () => { setStatus("READY"); updateUI(false); };
                 window.speechSynthesis.speak(u);
             });
             audioObj.onended = () => { setStatus("READY"); updateUI(false); };
