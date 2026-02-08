@@ -42,8 +42,8 @@
         async function checkPermissions() {
             if (Speech) {
                 try {
-                    await Speech.requestPermissions();
-                    log("Mic Ready");
+                    const status = await Speech.requestPermissions();
+                    log("Mic Permissions: " + status.speechRecognition);
                 } catch (e) { log("Mic Access Denied"); }
             }
         }
@@ -55,26 +55,40 @@
             curLang = lang;
             
             document.body.classList.add(side === 'left' ? 'active-left' : 'active-right');
-            textDisplay.innerText = "...";
-            log("Listening...");
+            textDisplay.innerText = "Listening...";
+            log("Mic Opening: " + lang);
 
             if (Speech) {
                 try {
-                    await Speech.start({ language: lang, partialResults: true, popup: false });
+                    // Pre-add listeners before starting
+                    Speech.removeAllListeners(); 
                     
                     Speech.addListener('partialResults', (data) => {
+                        log("Got Voice Data...");
                         if (data.matches && data.matches.length > 0) {
                             finalBuffer = data.matches[0];
-                            // LIVE TRANSCRIPTION: Show what is being said immediately
                             textDisplay.innerText = finalBuffer;
                         }
                     });
+
+                    Speech.addListener('error', (err) => {
+                        log("Mic Error: " + err.message);
+                    });
+
+                    // POPUP: FALSE might fail on some devices for specific languages.
+                    // We try to start it.
+                    await Speech.start({ 
+                        language: lang, 
+                        partialResults: true, 
+                        popup: false 
+                    });
+                    
+                    log("Mic Live & Recording");
                 } catch (e) { 
-                    log("Mic Error: " + e.message);
+                    log("Start Fail: " + e.message);
                     stopRecording();
                 }
             } else {
-                // Simulation for browser testing
                 setTimeout(() => { 
                     finalBuffer = lang.startsWith('my') ? "မင်္ဂလာပါ" : "Hello"; 
                     textDisplay.innerText = finalBuffer;
@@ -86,15 +100,15 @@
             if (!isRec) return;
             isRec = false;
             document.body.classList.remove('active-left', 'active-right');
+            log("Mic Closing...");
             
             if (Speech) {
                 try { 
                     await Speech.stop(); 
-                    Speech.removeAllListeners(); 
-                } catch (e) {}
+                    // Don't remove all listeners immediately, wait for final results if any
+                } catch (e) { log("Stop Fail: " + e.message); }
             }
 
-            // Short delay to ensure final speech result is processed
             setTimeout(async () => {
                 if (finalBuffer) {
                     textDisplay.innerText = "TRANSLATING...";
@@ -103,21 +117,19 @@
                     textDisplay.innerText = "READY";
                     log("No speech detected");
                 }
-            }, 400);
+                // Cleanup listeners after processing
+                if(Speech) Speech.removeAllListeners();
+            }, 500);
         }
 
         async function translate(text) {
             const isMM = curLang.startsWith('my');
             const sl = isMM ? 'my' : 'en', tl = isMM ? 'en' : 'my';
-            log("Translating...");
             try {
                 const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`);
                 const data = await res.json();
                 const translated = data[0].map(s => s[0]).join('').trim();
-                
-                // Show translated text
                 textDisplay.innerText = translated;
-                log("Playing Voice...");
                 await speak(translated, tl);
             } catch (e) { 
                 log("Translation Error"); 
@@ -143,7 +155,6 @@
                     }
                 } catch (e) { log("Natural Voice Fail"); }
             }
-            // Fallback to Edge TTS or System
             try {
                 if (typeof EdgeTTS !== 'undefined') {
                     const voice = lang === 'my' ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
@@ -152,7 +163,6 @@
                     return;
                 }
             } catch (e) {}
-            
             const u = new SpeechSynthesisUtterance(text);
             u.lang = lang === 'my' ? 'my-MM' : 'en-US';
             window.speechSynthesis.speak(u);
