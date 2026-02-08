@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike Proxy</title>
+    <title>PyawLike Debug</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
@@ -11,6 +11,10 @@
 </head>
 <body class="dark-mode">
     
+    <div id="debugBar" style="position:fixed; top:0; left:0; right:0; background:rgba(255,0,0,0.8); color:white; font-size:10px; padding:5px; z-index:99999; text-align:center; display:none;">
+        Debug Info...
+    </div>
+
     <div class="bottom-nav">
         <svg id="fsBtn" class="fs-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
         <div class="nav-dot" id="menuBtn"></div>
@@ -44,6 +48,15 @@
     </div>
 
     <script>
+        // --- LOGGING ---
+        function log(msg) {
+            const dbg = document.getElementById('debugBar');
+            dbg.style.display = 'block';
+            dbg.innerText = msg;
+            console.log(msg);
+            setTimeout(() => { dbg.style.display='none'; }, 5000);
+        }
+
         // --- SETUP ---
         const btnMM=document.getElementById('btnMM'), btnENG=document.getElementById('btnENG');
         const textDisplay=document.getElementById('textDisplay'), menu=document.getElementById('menu');
@@ -78,14 +91,15 @@
             }
         }
 
-        // --- PLAY OUTPUT (THE FIX) ---
+        // --- PLAY OUTPUT ---
         async function playOutput(text, lang) {
             const isBurmese = (lang === 'my' || lang === 'my-MM');
             const hasKey = geminiInput.value.trim().length > 5;
 
-            // A. GEMINI MODE (If enabled)
+            // 1. GEMINI MODE
             if (naturalMode && isBurmese && hasKey) {
                 try {
+                    log("Calling Gemini...");
                     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiInput.value}`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -99,18 +113,19 @@
                         const blob = new Blob([Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0))], {type:'audio/wav'});
                         audioObj.src = URL.createObjectURL(blob); await audioObj.play(); return;
                     }
-                } catch(e) { console.log("Gemini Fail, trying Edge..."); }
+                } catch(e) { log("Gemini Error: " + e.message); }
             }
 
-            // B. EDGE TTS PROXY (Server-Side)
+            // 2. EDGE SERVER PROXY
             try {
-                console.log("Calling Server Proxy...");
                 const voice = isBurmese ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
+                // CRITICAL: Ensure we use the correct Server URL
+                const serverUrl = window.ENV?.SERVER_URL || "https://pyawlike.vercel.app";
+                const target = `${serverUrl}/api/edge`;
                 
-                // Use the Server URL from config.js, or fallback to current origin
-                const baseUrl = window.ENV?.SERVER_URL || window.location.origin;
+                log(`Calling Proxy: ${target}`);
                 
-                const res = await fetch(`${baseUrl}/api/edge`, {
+                const res = await fetch(target, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ text, voice })
@@ -122,18 +137,19 @@
                     await audioObj.play();
                     return;
                 } else {
-                    console.warn("Proxy Error:", await res.text());
+                    const errText = await res.text();
+                    log(`Proxy Error: ${res.status} ${errText}`);
                 }
-            } catch (e) { console.error("Edge Proxy Failed:", e); }
+            } catch (e) { log("Proxy Network Fail: " + e.message); }
 
-            // C. SYSTEM FALLBACK (Last Resort)
-            console.log("Using System Fallback");
+            // 3. SYSTEM FALLBACK
+            log("Fallback to System Voice");
             const u = new SpeechSynthesisUtterance(text);
             u.lang = isBurmese ? 'my-MM' : 'en-US';
             window.speechSynthesis.speak(u);
         }
 
-        // --- MIC LOGIC ---
+        // --- MIC ---
         function initMic(lang) {
             const Speech = window.webkitSpeechRecognition || window.speechRecognition;
             if (!Speech) { alert("Mic not supported"); return null; }
@@ -158,7 +174,7 @@
                 const result = data[0].map(s => s[0]).join('').trim();
                 textDisplay.innerText = result;
                 playOutput(result, tl);
-            } catch (e) { textDisplay.innerText = "Error"; }
+            } catch (e) { textDisplay.innerText = "Trans Error"; }
         }
 
         btnMM.addEventListener('click', () => { if(!isRecording) { recognition = initMic('my-MM'); recognition?.start(); } else recognition?.stop(); });
