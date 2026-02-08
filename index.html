@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike Pro</title>
+    <title>PyawLike</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="data:,">
     <script src="config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
 </head>
@@ -19,16 +20,8 @@
     </div>
 
     <div class="dropdown" id="menu">
-        <input type="password" id="geminiKey" class="api-input" placeholder="GEMINI API KEY">
-        <div class="menu-item">
-            NATURAL MODE
-            <div id="statusBtn" class="status-switch">
-                <span id="statusIcon" class="status-icon">✕</span>
-            </div>
-        </div>
         <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw"></div>
         <div class="menu-item">SHOW TEXT <input type="checkbox" id="textSw" checked></div>
-        <button class="clean-btn" onclick="clearVoiceCache()">CLEAN CACHE</button>
     </div>
 
     <div class="status-area">
@@ -49,12 +42,10 @@
         const btnMM=document.getElementById('btnMM'), btnENG=document.getElementById('btnENG');
         const textDisplay=document.getElementById('textDisplay'), menu=document.getElementById('menu');
         const textSw=document.getElementById('textSw'), waveBox=document.getElementById('waveBox');
-        const geminiInput=document.getElementById('geminiKey'), statusBtn=document.getElementById('statusBtn'), statusIcon=document.getElementById('statusIcon');
         const audioObj = new Audio();
         audioObj.volume = 1.0;
         
         let isRecording = false, recognition = null;
-        let naturalMode = localStorage.getItem('natural_mode') === 'true';
 
         // --- ANIMATIONS ---
         function createRipple(e, btn) {
@@ -78,25 +69,12 @@
                 textDisplay.innerText = txt;
                 if (txt && txt.length > 0) {
                     textDisplay.classList.add('visible');
-                    // Auto-hide after 5 seconds
                     textTimer = setTimeout(() => {
                         textDisplay.classList.remove('visible');
                     }, 5000);
                 }
             }, 50);
         }
-
-        // --- STATUS & UI ---
-        function updateStatusUI() {
-            const hasKey = geminiInput.value.trim().length > 5;
-            if (naturalMode) {
-                if (hasKey) { statusBtn.className = "status-switch active"; statusIcon.innerText = "✓"; }
-                else { statusBtn.className = "status-switch error"; statusIcon.innerText = "✕"; }
-            } else { statusBtn.className = "status-switch"; statusIcon.innerText = "✕"; }
-        }
-        statusBtn.addEventListener('click', () => { naturalMode = !naturalMode; localStorage.setItem('natural_mode', naturalMode); updateStatusUI(); });
-        geminiInput.addEventListener('input', () => { localStorage.setItem('gemini_key', geminiInput.value); updateStatusUI(); });
-        geminiInput.value = localStorage.getItem('gemini_key') || ''; updateStatusUI();
 
         function updateUI(recording) {
             const showText = textSw.checked;
@@ -120,7 +98,6 @@
             menu.classList.toggle('open');
         });
 
-        // Close menu when clicking outside
         window.addEventListener('click', (e) => {
             if (menu.classList.contains('open') && !menu.contains(e.target) && e.target.id !== 'menuBtn') {
                 menu.classList.remove('open');
@@ -128,7 +105,6 @@
         });
 
         function initMic(lang) {
-            // Wake Up Server instantly
             const serverUrl = window.ENV?.SERVER_URL || "https://pyawlike.vercel.app";
             fetch(`${serverUrl}/api/edge`, { method: 'OPTIONS' }).catch(()=>{});
 
@@ -171,31 +147,19 @@
 
         async function playOutput(text, lang) {
             const isBurmese = (lang === 'my' || lang === 'my-MM');
-            const hasKey = geminiInput.value.trim().length > 5;
-
-            if (naturalMode && isBurmese && hasKey) {
-                try {
-                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiInput.value}`, {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ role: "user", parts: [{ text: `Read naturally: ${text}` }] }],
-                            generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } } }
-                        })
-                    });
-                    const data = await res.json();
-                    const audioBase64 = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
-                    if (audioBase64) {
-                        const blob = new Blob([Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0))], {type:'audio/wav'});
-                        audioObj.src = URL.createObjectURL(blob); await audioObj.play(); return;
-                    }
-                } catch (e) { console.log("Gemini Fail"); }
-            }
-
             try {
                 const serverUrl = window.ENV?.SERVER_URL || "https://pyawlike.vercel.app";
                 const voice = isBurmese ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
-                const res = await fetch(`${serverUrl}/api/edge`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice }) });
-                if (res.ok) { audioObj.src = URL.createObjectURL(await res.blob()); await audioObj.play(); return; }
+                const res = await fetch(`${serverUrl}/api/edge`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text, voice })
+                });
+                if (res.ok) {
+                    audioObj.src = URL.createObjectURL(await res.blob());
+                    await audioObj.play();
+                    return;
+                }
             } catch (e) { console.log("Proxy Fail"); }
 
             const u = new SpeechSynthesisUtterance(text);
