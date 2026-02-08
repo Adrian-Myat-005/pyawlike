@@ -27,7 +27,7 @@
         <div class="wave-box" id="waveBox">
             <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
         </div>
-        <div class="debug-line" id="statusLog">SYSTEM READY</div>
+        <div class="debug-line" id="statusLog" style="display:none;">SYSTEM READY</div>
     </div>
 
     <div class="speaker-wrapper">
@@ -43,9 +43,14 @@
         const textSw=document.getElementById('textSw'), waveBox=document.getElementById('waveBox');
         const statusLog=document.getElementById('statusLog');
         const audioObj = new Audio();
+        audioObj.volume = 1.0; // Stabilize Volume
+        
         let isRecording = false, recognition = null;
 
-        function setStatus(msg) { statusLog.innerText = msg; }
+        function setStatus(msg) { 
+            statusLog.innerText = msg; 
+            console.log(msg);
+        }
 
         function updateUI(recording) {
             const showText = textSw.checked;
@@ -77,7 +82,7 @@
 
         function initMic(lang) {
             const Speech = window.webkitSpeechRecognition || window.speechRecognition;
-            if (!Speech) { setStatus("MIC NOT SUPPORTED"); return null; }
+            if (!Speech) { return null; }
             
             const rec = new Speech();
             rec.lang = lang;
@@ -113,7 +118,7 @@
                 }
             };
 
-            rec.onerror = (e) => { setStatus("ERROR: " + e.error); isRecording = false; updateUI(false); };
+            rec.onerror = (e) => { isRecording = false; updateUI(false); };
             return rec;
         }
 
@@ -135,8 +140,9 @@
             const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${lang}&client=tw-ob`;
             audioObj.src = url;
             audioObj.play().catch(e => {
-                setStatus("AUDIO BLOCKED");
+                // Silently fallback to System TTS without error tag
                 const u = new SpeechSynthesisUtterance(text);
+                u.volume = 1.0;
                 u.lang = lang === 'my' ? 'my-MM' : 'en-US';
                 window.speechSynthesis.speak(u);
             });
