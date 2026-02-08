@@ -4,16 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>PyawLike Continuous</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
 </head>
-<body class="dark-mode">
-    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.5);color:#0f0;font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.5;">Continuous Mode Active</div>
+<body class="">
+    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.1);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.5;">PyawLike Ready</div>
     
-    <div class="top-nav"><div class="nav-dot" id="menuBtn"></div></div>
+    <div class="top-nav" id="menuBtn"><div class="nav-dot"></div></div>
     <div class="dropdown" id="menu">
-        <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw" checked></div>
+        <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw"></div>
         <div class="menu-item">SHOW TEXT <input type="checkbox" id="textSw" checked></div>
         <div class="menu-item">NATURAL VOICE <input type="checkbox" id="naturalSw" checked></div>
     </div>
@@ -33,40 +36,163 @@
         const logArea = document.getElementById('debug-log');
         const textDisplay = document.getElementById('textDisplay');
         const masterAudio = new Audio();
-        let isRec = false, masterBuffer = '', finalBuffer = '', curLang = 'en-US';
+        let isRec = false, isProcessing = false, masterBuffer = '', finalBuffer = '', curLang = 'en-US';
+        let wakeLock = null;
+
+        // --- GLOBAL ERROR TRAP ---
+        window.onerror = function(msg, source, lineno, colno, error) {
+            log("CRASH: " + msg);
+            // Auto-recover UI state
+            isProcessing = false;
+            document.body.classList.remove('active-left', 'active-right');
+            textDisplay.innerText = "READY (Recovered)";
+            return false;
+        };
 
         function log(msg) { logArea.innerText = msg; }
 
+        // --- WAKE LOCK (Keep Screen On) ---
+        async function requestWakeLock() {
+            if ('wakeLock' in navigator) {
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                    log("Screen Locked");
+                    wakeLock.addEventListener('release', () => {
+                        log("Screen Lock Released");
+                    });
+                } catch (err) {
+                   // log("WakeLock Fail");
+                }
+            }
+        }
+        // Re-request wake lock when page becomes visible
+        document.addEventListener('visibilitychange', async () => {
+            if (wakeLock !== null && document.visibilityState === 'visible') {
+                await requestWakeLock();
+            }
+        });
+        requestWakeLock();
+
+        // --- FETCH WITH TIMEOUT ---
+        async function fetchWithTimeout(resource, options = {}) {
+            const { timeout = 10000 } = options;
+            const controller = new AbortController();
+            const id = setTimeout(() => controller.abort(), timeout);
+            try {
+                const response = await fetch(resource, { ...options, signal: controller.signal });
+                clearTimeout(id);
+                return response;
+            } catch (e) {
+                clearTimeout(id);
+                throw e;
+            }
+        }
+
+        // --- THEME ---
+        const themeSw = document.getElementById('themeSw');
+        themeSw.addEventListener('change', () => {
+            document.body.classList.toggle('dark-mode', themeSw.checked);
+        });
+
+        // --- AUDIO UNLOCK FOR MOBILE ---
+        function unlockAudio() {
+            const silent = new SpeechSynthesisUtterance("");
+            window.speechSynthesis.speak(silent);
+            masterAudio.play().then(() => {
+                masterAudio.pause();
+                masterAudio.currentTime = 0;
+            }).catch(() => {});
+            log("Audio Unlocked");
+            window.removeEventListener('pointerdown', unlockAudio);
+            requestWakeLock(); // Retry wake lock on interaction
+        }
+        window.addEventListener('pointerdown', unlockAudio);
+
+        // --- RIPPLE ---
+        function createRipple(e, btn) {
+            const circle = document.createElement("span");
+            const diameter = Math.max(btn.clientWidth, btn.clientHeight);
+            const radius = diameter / 2;
+            circle.style.width = circle.style.height = `${diameter}px`;
+            circle.style.left = `${e.clientX - btn.getBoundingClientRect().left - radius}px`;
+            circle.style.top = `${e.clientY - btn.getBoundingClientRect().top - radius}px`;
+            circle.classList.add("ripple");
+            const ripple = btn.getElementsByClassName("ripple")[0];
+            if (ripple) ripple.remove();
+            btn.appendChild(circle);
+        }
+
         const Speech = (window.Capacitor && window.Capacitor.Plugins) ? window.Capacitor.Plugins.SpeechRecognition : null;
+        let recognition = null;
+
+        if (!Speech && ('webkitSpeechRecognition' in window || 'speechRecognition' in window)) {
+            const SpeechRecognition = window.webkitSpeechRecognition || window.speechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        masterBuffer += event.results[i][0].transcript;
+                    } else {
+                        interimTranscript += event.results[i][0].transcript;
+                    }
+                }
+                finalBuffer = (masterBuffer + interimTranscript).trim();
+                textDisplay.innerText = finalBuffer || "Listening...";
+            };
+
+            recognition.onerror = (event) => {
+                if (event.error === 'no-speech') return;
+                log("Mic Error: " + event.error);
+            };
+
+            recognition.onend = () => {
+                if (isRec) {
+                    try { recognition.start(); } catch(e) {}
+                }
+            };
+        }
 
         async function checkPermissions() {
             if (Speech) {
                 try {
-                    await Speech.requestPermissions();
+                    const perm = await Speech.checkPermissions();
+                    if (perm.speechRecognition !== 'granted') {
+                        await Speech.requestPermissions();
+                    }
                     log("Mic Ready");
                 } catch (e) { log("Mic Denied"); }
+            } else if (recognition) {
+                log("WebSpeech Ready");
             }
         }
 
-        // --- CORE CONTINUOUS MIC ENGINE ---
         async function runMic() {
             if (!isRec) return;
             try {
-                log("Mic Active...");
-                await Speech.start({ 
-                    language: curLang, 
-                    partialResults: true, 
-                    popup: false,
-                    continuous: true // Request continuous mode from native
-                });
+                if (Speech) {
+                    await Speech.start({ 
+                        language: curLang, 
+                        partialResults: true, 
+                        popup: false,
+                        continuous: true 
+                    });
+                } else if (recognition) {
+                    recognition.lang = curLang;
+                    recognition.start();
+                }
+                log("Listening...");
             } catch (e) {
-                log("Mic Error: " + e.message);
-                if (isRec) setTimeout(runMic, 100); // Try restart if still holding
+                log("Start Error: " + e.message);
+                if (isRec) setTimeout(runMic, 300); 
             }
         }
 
         async function start(lang, side) {
-            if (isRec) return;
+            if (isRec || isProcessing) return;
             isRec = true;
             masterBuffer = '';
             finalBuffer = '';
@@ -74,98 +200,161 @@
             
             document.body.classList.add(side === 'left' ? 'active-left' : 'active-right');
             textDisplay.innerText = "Listening...";
-            textDisplay.style.color = "#4a90e2";
+            textDisplay.style.color = "var(--accent)";
+
+            masterAudio.pause();
+            window.speechSynthesis.cancel();
 
             if (Speech) {
                 Speech.removeAllListeners();
-                
-                // Partial results update the current "live" view
                 Speech.addListener('partialResults', (data) => {
                     if (data.matches && data.matches.length > 0) {
-                        const currentText = data.matches[0];
-                        finalBuffer = (masterBuffer + " " + currentText).trim();
+                        finalBuffer = (masterBuffer + " " + data.matches[0]).trim();
                         textDisplay.innerText = finalBuffer;
                     }
                 });
-
-                // Final results (when the engine pauses) are saved to the master buffer
                 Speech.addListener('results', (data) => {
                     if (data.matches && data.matches.length > 0) {
                         masterBuffer = (masterBuffer + " " + data.matches[0]).trim();
                         finalBuffer = masterBuffer;
-                        log("Segment Saved");
-                        // If still holding, the engine might have stopped. We ensure it's running.
-                        if (isRec) runMic(); 
                     }
                 });
-
                 await runMic();
-            } else {
-                // Browser Sim
-                setTimeout(() => { finalBuffer = "Hello world"; textDisplay.innerText = finalBuffer; }, 1000);
+            } else if (recognition) {
+                await runMic();
             }
         }
 
         async function stopRecording() {
             if (!isRec) return;
             isRec = false;
+            isProcessing = true;
             document.body.classList.remove('active-left', 'active-right');
             log("Processing...");
             
             if (Speech) {
                 try { await Speech.stop(); } catch (e) {}
                 Speech.removeAllListeners();
+            } else if (recognition) {
+                try { recognition.stop(); } catch (e) {}
             }
 
             setTimeout(async () => {
                 if (finalBuffer) {
                     textDisplay.style.color = "var(--text)";
-                    textDisplay.innerText = "TRANSLATING...";
+                    textDisplay.innerText = "..."; 
                     await translate(finalBuffer);
                 } else {
                     textDisplay.innerText = "READY";
+                    isProcessing = false;
                 }
-            }, 500);
+            }, 300);
         }
 
         async function translate(text) {
             const isMM = curLang.startsWith('my');
             const sl = isMM ? 'my' : 'en', tl = isMM ? 'en' : 'my';
             try {
-                const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`);
+                const res = await fetchWithTimeout(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`, { timeout: 8000 });
                 const data = await res.json();
                 const translated = data[0].map(s => s[0]).join('').trim();
                 textDisplay.innerText = translated;
                 await speak(translated, tl);
-            } catch (e) { textDisplay.innerText = "ERROR"; }
+            } catch (e) { 
+                log("Network Error");
+                textDisplay.innerText = "TRY AGAIN";
+                isProcessing = false;
+            }
         }
 
         async function speak(text, lang) {
             const natural = document.getElementById('naturalSw').checked;
+            let playedNatural = false;
+
             if (natural) {
                 try {
-                    const url = window.ENV?.SERVER_URL || 'https://pyawlike.vercel.app';
-                    const res = await fetch(`${url}/api/tts`, {
-                        method: 'POST', headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ text, lang })
+                    const url = window.ENV?.SERVER_URL || window.location.origin;
+                    const res = await fetchWithTimeout(`${url}/api/tts`, {
+                        method: 'POST', 
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ text, lang, apiKey: window.ENV?.GEMINI_API_KEY }),
+                        timeout: 12000
                     });
                     const data = await res.json();
                     if (data.audio) {
                         const b = new Blob([Uint8Array.from(atob(data.audio), c => c.charCodeAt(0))], {type:'audio/wav'});
-                        masterAudio.src = URL.createObjectURL(b);
-                        masterAudio.play();
-                        return;
+                        const blobUrl = URL.createObjectURL(b);
+                        
+                        masterAudio.src = blobUrl;
+                        masterAudio.onended = () => {
+                            URL.revokeObjectURL(blobUrl); 
+                            isProcessing = false;
+                        };
+                        masterAudio.onerror = () => {
+                            URL.revokeObjectURL(blobUrl);
+                            fallbackSpeak(text, lang);
+                        };
+                        
+                        await masterAudio.play();
+                        playedNatural = true;
+                        log("Natural Voice active");
                     }
-                } catch (e) {}
+                } catch (e) {
+                    log("TTS API unavailable");
+                }
             }
+
+            if (!playedNatural) {
+                fallbackSpeak(text, lang);
+            }
+        }
+
+        function fallbackSpeak(text, lang) {
+            log("Using System Voice");
+            window.speechSynthesis.cancel();
             const u = new SpeechSynthesisUtterance(text);
-            u.lang = lang === 'my' ? 'my-MM' : 'en-US';
+            
+            if (lang === 'my') {
+                u.lang = 'my-MM';
+            } else {
+                u.lang = 'en-US';
+            }
+
+            // --- WATCHDOG: Force release if system is silent ---
+            const watchdog = setTimeout(() => {
+                if (isProcessing) {
+                    log("System TTS Timeout");
+                    isProcessing = false;
+                    window.speechSynthesis.cancel();
+                }
+            }, 8000); // 8 seconds max for system voice
+
+            u.onend = () => { 
+                clearTimeout(watchdog);
+                isProcessing = false; 
+            };
+            u.onerror = (e) => { 
+                clearTimeout(watchdog);
+                log("System TTS Error");
+                isProcessing = false; 
+            };
             window.speechSynthesis.speak(u);
+        }
+
+        // Warm up system voices for Android
+        window.speechSynthesis.getVoices();
+        if (speechSynthesis.onvoiceschanged !== undefined) {
+            speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
         }
 
         function attach(id, lang, side) {
             const btn = document.getElementById(id);
-            btn.addEventListener('pointerdown', (e) => { e.preventDefault(); btn.setPointerCapture(e.pointerId); start(lang, side); });
+            btn.addEventListener('pointerdown', (e) => { 
+                e.preventDefault(); 
+                btn.setPointerCapture(e.pointerId); 
+                createRipple(e, btn);
+                start(lang, side); 
+            });
             btn.addEventListener('pointerup', (e) => { e.preventDefault(); btn.releasePointerCapture(e.pointerId); stopRecording(); });
         }
 

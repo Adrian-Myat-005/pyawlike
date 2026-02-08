@@ -4,8 +4,8 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') return res.status(200).end();
 
-    const { text, lang } = req.body;
-    const apiKey = process.env.GEMINI_API_KEY; 
+    const { text, lang, apiKey: bodyKey } = req.body;
+    const apiKey = process.env.GEMINI_API_KEY || bodyKey; 
 
     if (!apiKey) return res.status(500).json({ error: "Server missing API Key" });
 
