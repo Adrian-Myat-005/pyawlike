@@ -28,12 +28,13 @@
     </style>
 </head>
 <body class="">
-    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:100000;border-radius:5px;opacity:0.6;">Edge Engine Ready</div>
+    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:100000;border-radius:5px;pointer-events:none;opacity:0.6;">System Ready</div>
     
     <div class="top-nav" id="menuBtn"><div class="nav-dot"></div></div>
     <div class="dropdown" id="menu">
         <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw"></div>
         <div class="menu-item">SHOW TEXT <input type="checkbox" id="textSw" checked></div>
+        <div class="menu-item">NATURAL VOICE <input type="checkbox" id="naturalSw" checked></div>
         <div class="menu-item">CONTINUOUS <input type="checkbox" id="contSw"></div>
         <button onclick="testVoice()" style="background:var(--accent);color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:10px;cursor:pointer;font-size:12px;">TEST EDGE VOICE</button>
         <button onclick="hardReset()" style="background:#ff4444;color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:15px;cursor:pointer;font-size:12px;">HARD RESET</button>
@@ -65,6 +66,7 @@
         function setUIState(state) { stateBadge.innerText = state; }
 
         async function hardReset() {
+            log("Engine Reset...");
             isRec = false; isProcessing = false;
             document.body.classList.remove('active-left', 'active-right');
             setUIState('READY');
@@ -83,9 +85,13 @@
                 recognition.interimResults = true;
                 recognition.onresult = (e) => {
                     let full = '';
-                    for (let i = e.resultIndex; i < e.results.length; ++i) full += e.results[i][0].transcript;
+                    for (let i = 0; i < e.results.length; ++i) {
+                        full += e.results[i][0].transcript;
+                    }
                     currentTranscript = full.trim();
-                    textDisplay.innerText = currentTranscript || "Listening...";
+                    if (document.getElementById('textSw').checked) {
+                        textDisplay.innerText = currentTranscript || "Listening...";
+                    }
                 };
                 recognition.onend = () => { if (isRec) try { recognition.start(); } catch(e) {} };
                 log("Edge Pro Ready");
@@ -94,9 +100,8 @@
 
         async function start(lang, side) {
             if (isRec || isProcessing) return;
-            // Prime audio
-            masterAudio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
-            masterAudio.play().catch(()=>{});
+            // Force audio context unlock
+            masterAudio.play().then(() => masterAudio.pause()).catch(()=>{});
 
             isRec = true; currentTranscript = ''; curLang = lang;
             setUIState('LISTENING');
@@ -115,30 +120,47 @@
             setUIState('THINKING');
             if (recognition) { try { recognition.stop(); } catch(e) {} }
 
+            // Increased settle time to ensure transcription is finalized
             setTimeout(async () => {
                 if (currentTranscript) {
                     try {
                         const isMM = curLang.startsWith('my');
                         const sl = isMM ? 'my' : 'en', tl = isMM ? 'en' : 'my';
-                        const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(currentTranscript)}`);
+                        log(`Translating ${sl} -> ${tl}`);
+                        
+                        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(currentTranscript)}`;
+                        const res = await fetch(url);
+                        if (!res.ok) throw new Error("Translation Blocked");
+                        
                         const data = await res.json();
                         const result = data[0].map(s => s[0]).join('').trim();
-                        textDisplay.innerText = result;
+                        
+                        if (document.getElementById('textSw').checked) {
+                            textDisplay.innerText = result;
+                        }
+                        log("Translation Success");
                         await speak(result, tl);
-                    } catch (e) { log("Pipeline Fail"); hardReset(); }
-                } else { hardReset(); }
-            }, 400);
+                    } catch (e) { 
+                        log("Translate Fail: " + e.message); 
+                        textDisplay.innerText = "TRANSLATION ERROR";
+                        setTimeout(hardReset, 2000);
+                    }
+                } else { 
+                    log("Empty Transcript");
+                    hardReset(); 
+                }
+            }, 600);
         }
 
         async function speak(text, lang) {
             setUIState('SPEAKING');
             try {
-                log("Edge Neural Synthesis...");
+                log("Edge Synthesis: " + lang);
                 const TTS = window.EdgeTTS?.EdgeTTS || window.EdgeTTS?.UniversalEdgeTTS || window.EdgeTTS;
-                if (!TTS) throw new Error("Edge Library Missing");
+                if (!TTS) throw new Error("Library Missing");
                 
                 const tts = new TTS();
-                // ONLY EDGE VOICES
+                // BEST FLUENT VOICES
                 const voice = (lang === 'my' || lang === 'my-MM') ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
                 
                 const audioData = await tts.synthesize(text, voice);
@@ -152,12 +174,12 @@
                 };
                 masterAudio.onerror = () => { 
                     URL.revokeObjectURL(url); 
-                    log("Audio Playback Error"); 
+                    log("Audio Error"); 
                     hardReset(); 
                 };
                 await masterAudio.play();
             } catch (e) {
-                log("Edge Fail: " + e.message);
+                log("Voice Fail: " + e.message);
                 hardReset();
             }
         }
@@ -168,7 +190,7 @@
                 isProcessing = false;
                 const nextLang = (curLang === 'my-MM') ? 'en-US' : 'my-MM';
                 const nextSide = (nextLang === 'my-MM') ? 'left' : 'right';
-                setTimeout(() => start(nextLang, nextSide), 800);
+                setTimeout(() => start(nextLang, nextSide), 1000);
             } else {
                 isProcessing = false;
                 setUIState('READY');
