@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike Robust Pro</title>
+    <title>PyawLike Pro</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
@@ -12,11 +12,10 @@
     <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
 </head>
 <body class="dark-mode">
-    <div id="error" style="position:fixed;bottom:100px;left:50%;transform:translateX(-50%);background:red;color:white;padding:10px 20px;border-radius:20px;display:none;z-index:1000000;font-size:12px;pointer-events:none;"></div>
     
-    <div class="bottom-nav" style="pointer-events: auto;">
-        <svg id="fsBtn" class="fs-icon" viewBox="0 0 24 24" style="pointer-events: auto;"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
-        <div class="nav-dot" id="menuBtn" style="pointer-events: auto;"></div>
+    <div class="bottom-nav">
+        <svg id="fsBtn" class="fs-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+        <div class="nav-dot" id="menuBtn"></div>
     </div>
 
     <div class="dropdown" id="menu">
@@ -25,133 +24,129 @@
         <div class="menu-item">GEMINI VOICE <input type="checkbox" id="naturalSw"></div>
     </div>
 
-    <div class="status-area"><div class="transcription" id="textDisplay">Ready</div></div>
+    <div class="status-area">
+        <div class="transcription" id="textDisplay">Ready</div>
+        <div class="wave-container" id="waveBox">
+            <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        </div>
+    </div>
 
     <div class="speaker-wrapper">
         <div class="split-btn-container">
-            <button class="half-btn" id="btnMM" data-lang="my-MM"><span class="btn-label">MM</span></button>
-            <button class="half-btn" id="btnENG" data-lang="en-US"><span class="btn-label">ENG</span></button>
+            <button class="half-btn" id="btnMM"><span class="btn-label">MM</span></button>
+            <button class="half-btn" id="btnENG"><span class="btn-label">ENG</span></button>
         </div>
     </div>
 
     <script>
         const btnMM=document.getElementById('btnMM'), btnENG=document.getElementById('btnENG');
         const textDisplay=document.getElementById('textDisplay'), menu=document.getElementById('menu');
-        const errToast=document.getElementById('error');
+        const textSw=document.getElementById('textSw'), waveBox=document.getElementById('waveBox');
         const nativeMic = window.Capacitor ? Capacitor.Plugins.SpeechRecognition : null;
         const masterAudio = new Audio();
-        let isRec = false, isProcessing = false, finalBuffer = '';
-
-        function log(msg) { console.log(msg); }
+        let isRec = false, isProcessing = false, finalBuffer = '', curLang = '';
 
         async function hardReset() {
             isRec = false; isProcessing = false;
             document.body.classList.remove('active-left', 'active-right');
             textDisplay.innerText = "Ready";
+            waveBox.style.display = 'none';
             if (window.speechSynthesis) window.speechSynthesis.cancel();
             masterAudio.pause();
             if (nativeMic) { try { await nativeMic.stop(); nativeMic.removeAllListeners(); } catch(e){} }
+            else if (window.rec) { window.rec.stop(); }
+        }
+
+        function updateUI() {
+            const showText = textSw.checked;
+            if (isRec || isProcessing) {
+                if (showText) {
+                    textDisplay.style.display = 'block';
+                    waveBox.style.display = 'none';
+                } else {
+                    textDisplay.style.display = 'none';
+                    waveBox.style.display = 'flex';
+                }
+            } else {
+                textDisplay.style.display = showText ? 'block' : 'none';
+                waveBox.style.display = 'none';
+            }
         }
 
         async function toggleFS() {
             if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
-            else if (document.exitFullscreen) document.exitFullscreen();
+            else document.exitFullscreen().catch(()=>{});
         }
-        document.getElementById('fsBtn').addEventListener('click', (e) => { e.stopPropagation(); toggleFS(); });
-        document.getElementById('menuBtn').addEventListener('click', (e) => { e.stopPropagation(); menu.classList.toggle('open'); });
+        document.getElementById('fsBtn').addEventListener('click', toggleFS);
+        document.getElementById('menuBtn').addEventListener('click', () => menu.classList.toggle('open'));
 
         function attach(btn, inputLang, targetLang, side) {
-            btn.addEventListener('pointerdown', async (e) => {
-                e.preventDefault(); 
-                e.stopPropagation();
-                if(isProcessing) return;
+            btn.addEventListener('click', async () => {
+                if (isProcessing) return;
                 
-                if(isRec) { stop(inputLang, targetLang); return; }
-                
-                document.body.classList.add(side === 'left' ? 'active-left' : 'active-right');
-                textDisplay.innerText = "Listening...";
-                isRec = true;
-                btn.setPointerCapture(e.pointerId);
+                if (isRec) {
+                    // STOP
+                    isRec = false;
+                    isProcessing = true;
+                    document.body.classList.remove('active-left', 'active-right');
+                    updateUI();
+                    
+                    if (nativeMic) { await nativeMic.stop(); nativeMic.removeAllListeners(); }
+                    else if (window.rec) { window.rec.stop(); }
 
-                if(nativeMic) {
-                    try {
-                        await nativeMic.requestPermissions(); 
-                        await nativeMic.start({ language: inputLang, partialResults: true, popup: false, continuous: true });
-                        nativeMic.addListener('partialResults', (d) => {
-                            if(d.matches && d.matches.length > 0) {
-                                finalBuffer = d.matches[0];
-                                if(document.getElementById('textSw').checked) textDisplay.innerText = finalBuffer;
-                            }
-                        });
-                        nativeMic.addListener('results', (d) => {
-                            if(d.matches && d.matches.length > 0) finalBuffer = d.matches[0];
-                        });
-                    } catch(e) { stop(inputLang, targetLang); showErr("Mic Error"); }
-                } else if ('webkitSpeechRecognition' in window) {
-                    if (!window.rec) {
-                        const SpeechReq = window.webkitSpeechRecognition || window.speechRecognition;
-                        window.rec = new SpeechReq();
-                        window.rec.continuous = true;
-                        window.rec.interimResults = true;
-                        window.rec.onresult = (ev) => {
-                            let full = '';
-                            for (let i = ev.resultIndex; i < ev.results.length; ++i) full += ev.results[i][0].transcript;
-                            finalBuffer = full.trim();
-                            if(document.getElementById('textSw').checked) textDisplay.innerText = finalBuffer;
-                        };
+                    setTimeout(async () => {
+                        if (finalBuffer && finalBuffer.trim().length > 0) {
+                            textDisplay.innerText = "Translating...";
+                            const sl = inputLang.startsWith('my') ? 'my' : 'en';
+                            const tl = targetLang.startsWith('my') ? 'my' : 'en';
+                            const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(finalBuffer)}`);
+                            const data = await res.json();
+                            const result = data[0].map(s => s[0]).join('').trim();
+                            if (textSw.checked) textDisplay.innerText = result;
+                            await speak(result, targetLang);
+                        } else { hardReset(); }
+                    }, 400);
+                } else {
+                    // START
+                    isRec = true; curLang = inputLang; finalBuffer = '';
+                    document.body.classList.add(side === 'left' ? 'active-left' : 'active-right');
+                    textDisplay.innerText = "Listening...";
+                    updateUI();
+
+                    if (nativeMic) {
+                        try {
+                            await nativeMic.requestPermissions();
+                            await nativeMic.start({ language: inputLang, partialResults: true, continuous: true });
+                            nativeMic.addListener('partialResults', (d) => {
+                                if (d.matches && d.matches.length > 0) {
+                                    finalBuffer = d.matches[0];
+                                    if (textSw.checked) textDisplay.innerText = finalBuffer;
+                                }
+                            });
+                        } catch(e) { hardReset(); }
+                    } else if ('webkitSpeechRecognition' in window) {
+                        if (!window.rec) {
+                            const SpeechReq = window.webkitSpeechRecognition || window.speechRecognition;
+                            window.rec = new SpeechReq();
+                            window.rec.continuous = true;
+                            window.rec.interimResults = true;
+                            window.rec.onresult = (ev) => {
+                                let full = '';
+                                for (let i = ev.resultIndex; i < ev.results.length; ++i) full += ev.results[i][0].transcript;
+                                finalBuffer = full.trim();
+                                if (textSw.checked) textDisplay.innerText = finalBuffer;
+                            };
+                        }
+                        window.rec.lang = inputLang;
+                        window.rec.start();
                     }
-                    window.rec.lang = inputLang;
-                    window.rec.start();
                 }
             });
-
-            btn.addEventListener('pointerup', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                btn.releasePointerCapture(e.pointerId);
-                if(isRec) stop(inputLang, targetLang); 
-            });
-        }
-
-        async function stop(inputLang, targetLang) {
-            if(!isRec) return;
-            isRec = false;
-            isProcessing = true;
-            document.body.classList.remove('active-left', 'active-right');
-            
-            // Watchdog to prevent freeze
-            setTimeout(() => { isProcessing = false; }, 8000);
-
-            if(nativeMic) { try { await nativeMic.stop(); nativeMic.removeAllListeners(); } catch(e){} }
-            else if(window.rec) { window.rec.stop(); }
-            
-            setTimeout(async () => {
-                if(finalBuffer && finalBuffer.trim().length > 0) {
-                    textDisplay.innerText = "Translating...";
-                    await processTranslation(finalBuffer, inputLang, targetLang);
-                    finalBuffer = "";
-                } else { 
-                    textDisplay.innerText = "Ready"; 
-                    isProcessing = false;
-                }
-            }, 400);
-        }
-
-        async function processTranslation(text, inputLang, targetLang) {
-            try {
-                const sl = inputLang.startsWith('my') ? 'my' : 'en';
-                const tl = targetLang.startsWith('my') ? 'my' : 'en';
-                const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`);
-                const data = await res.json();
-                const translatedText = data[0].map(s => s[0]).join('').trim();
-                if(document.getElementById('textSw').checked) textDisplay.innerText = translatedText;
-                await speak(translatedText, targetLang);
-            } catch(e) { showErr("Trans Fail"); isProcessing = false; }
         }
 
         async function speak(text, lang) {
             const useGemini = document.getElementById('naturalSw').checked;
-            if(useGemini) {
+            if (useGemini) {
                 try {
                     const url = window.ENV?.SERVER_URL || window.location.origin;
                     const res = await fetch(`${url}/api/tts`, {
@@ -159,10 +154,10 @@
                         body: JSON.stringify({ text, lang: lang.startsWith('my')?'my':'en' })
                     });
                     const data = await res.json();
-                    if(data.audio) {
+                    if (data.audio) {
                         const b = new Blob([Uint8Array.from(atob(data.audio), c => c.charCodeAt(0))], {type:'audio/wav'});
                         masterAudio.src = URL.createObjectURL(b);
-                        masterAudio.onended = () => { isProcessing = false; };
+                        masterAudio.onended = () => { isProcessing = false; updateUI(); };
                         await masterAudio.play();
                         return;
                     }
@@ -170,14 +165,14 @@
             }
 
             try {
-                if(typeof EdgeTTS !== 'undefined') {
+                if (typeof EdgeTTS !== 'undefined') {
                     const voice = lang.startsWith('my') ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
                     const tts = new EdgeTTS.EdgeTTS();
                     const audioData = await tts.synthesize(text, voice);
                     const blob = new Blob([audioData], { type: 'audio/mp3' });
                     const url = URL.createObjectURL(blob);
                     masterAudio.src = url;
-                    masterAudio.onended = () => { URL.revokeObjectURL(url); isProcessing = false; };
+                    masterAudio.onended = () => { URL.revokeObjectURL(url); isProcessing = false; updateUI(); };
                     await masterAudio.play();
                     return;
                 }
@@ -185,16 +180,15 @@
 
             const u = new SpeechSynthesisUtterance(text);
             u.lang = lang;
-            u.onend = () => { isProcessing = false; };
+            u.onend = () => { isProcessing = false; updateUI(); };
             window.speechSynthesis.speak(u);
         }
-
-        function showErr(m) { errToast.innerText=m; errToast.style.display='block'; setTimeout(()=>errToast.style.display='none',3000); }
 
         attach(btnMM, 'my-MM', 'en-US', 'left');
         attach(btnENG', 'en-US', 'my-MM', 'right');
         
         document.getElementById('themeSw').addEventListener('change', (e) => document.body.classList.toggle('dark-mode', e.target.checked));
+        textSw.addEventListener('change', updateUI);
     </script>
 </body>
 </html>
