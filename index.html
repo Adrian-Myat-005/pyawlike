@@ -3,79 +3,85 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike Fluent Pro</title>
+    <title>PyawLike Minimal</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <link rel="icon" href="data:,">
     <script src="config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
-    <style>
-        :root { --circle-size: clamp(220px, 50vw, 300px); }
-        body { background: var(--bg); transition: 0.3s; overflow: hidden; font-family: 'Inter', sans-serif; }
-        .status-area {
-            position: fixed; top: 15%; left: 50%; transform: translateX(-50%);
-            width: 90vw; max-width: 600px; min-height: 160px;
-            background: var(--btn-white); border-radius: 32px;
-            display: flex; flex-direction: column; align-items: center; justify-content: center;
-            padding: 30px; box-shadow: 0 30px 60px rgba(0,0,0,0.12); z-index: 99999; text-align: center;
-        }
-        .transcription { font-size: 28px; font-weight: 800; color: var(--text); line-height: 1.2; width: 100%; }
-        .status-badge { font-size: 12px; font-weight: 900; letter-spacing: 3px; color: var(--accent); margin-bottom: 15px; text-transform: uppercase; opacity: 0.8; }
-        .voice-quality { font-size: 10px; font-weight: 900; margin-top: 10px; padding: 4px 10px; border-radius: 20px; background: #eee; color: #666; }
-        .voice-ai { background: #e6f4ea; color: #1e8e3e; }
-        .voice-sys { background: #feefee; color: #d93025; }
-    </style>
 </head>
-<body class="">
-    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:100000;border-radius:5px;opacity:0.6;">System Secure</div>
-    
-    <div class="top-nav" id="menuBtn"><div class="nav-dot"></div></div>
-    <div class="dropdown" id="menu">
-        <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw"></div>
-        <div class="menu-item">SHOW TEXT <input type="checkbox" id="textSw" checked></div>
-        <div class="menu-item">NATURAL VOICE <input type="checkbox" id="naturalSw" checked></div>
-        <div class="menu-item">CONTINUOUS <input type="checkbox" id="contSw"></div>
-        <button onclick="testVoice()" style="background:var(--accent);color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:10px;cursor:pointer;font-size:12px;">TEST NATURAL BURMESE</button>
-        <button onclick="hardReset()" style="background:#ff4444;color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:15px;cursor:pointer;font-size:12px;">HARD RESET SYSTEM</button>
+<body>
+    <div class="top-nav-container">
+        <button class="fs-btn" onclick="toggleFS()">
+            <svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+        </button>
+        <div class="nav-dot" id="menuBtn"></div>
     </div>
 
-    <div class="status-area">
-        <div class="status-badge" id="stateBadge">READY</div>
-        <div class="transcription" id="textDisplay">TAP TO START</div>
-        <div id="qualityBadge" class="voice-quality voice-ai">VOICE: READY</div>
+    <div class="dropdown" id="menu">
+        <div class="menu-item">FULLSCREEN <button onclick="toggleFS()" style="background:none;border:1px solid var(--accent);border-radius:4px;font-size:9px;padding:2px 6px;color:var(--text);">TOGGLE</button></div>
+        <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw"></div>
+        <div class="menu-item">TEXT DISPLAY <input type="checkbox" id="textSw" checked></div>
+    </div>
+
+    <div class="status-area" id="statusBox">
+        <div class="transcription" id="textDisplay">READY</div>
+    </div>
+
+    <div class="wave-container" id="waveBox">
+        <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
     </div>
 
     <div class="speaker-wrapper">
-        <div class="split-btn-container" id="mainCircle">
+        <div class="split-btn-container">
             <button class="half-btn" id="btnMM" data-lang="my-MM" data-side="left"><span class="btn-label">MM</span></button>
             <button class="half-btn" id="btnENG" data-lang="en-US" data-side="right"><span class="btn-label">ENG</span></button>
         </div>
     </div>
 
     <script>
-        const logArea = document.getElementById('debug-log');
         const textDisplay = document.getElementById('textDisplay');
-        const stateBadge = document.getElementById('stateBadge');
-        const qualityBadge = document.getElementById('qualityBadge');
+        const statusBox = document.getElementById('statusBox');
+        const waveBox = document.getElementById('waveBox');
+        const textSw = document.getElementById('textSw');
         let masterAudio = new Audio();
         
-        let isRec = false, isProcessing = false;
-        let curLang = 'en-US', currentTranscript = '';
+        let isRec = false, isProcessing = false, curLang = 'en-US', currentTranscript = '';
         let recognition = null;
 
-        function log(msg) { logArea.innerText = msg; console.log(msg); }
-        function setUIState(state) { stateBadge.innerText = state; }
+        function setUIState(active) {
+            if (active) {
+                if (textSw.checked) {
+                    statusBox.style.display = 'flex';
+                    waveBox.style.display = 'none';
+                } else {
+                    statusBox.style.display = 'none';
+                    waveBox.style.display = 'flex';
+                }
+            } else {
+                if (textSw.checked) {
+                    statusBox.style.display = 'flex';
+                    waveBox.style.display = 'none';
+                } else {
+                    statusBox.style.display = 'none';
+                    waveBox.style.display = 'none';
+                }
+            }
+        }
+
+        async function toggleFS() {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
+            else document.exitFullscreen().catch(()=>{});
+        }
 
         async function hardReset() {
             isRec = false; isProcessing = false;
             document.body.classList.remove('active-left', 'active-right');
-            setUIState('READY');
+            setUIState(false);
             textDisplay.innerText = "READY";
-            if (window.speechSynthesis) window.speechSynthesis.cancel();
             masterAudio.pause();
-            masterAudio.src = "";
             if (recognition) { try { recognition.stop(); } catch(e) {} }
         }
 
@@ -89,20 +95,17 @@
                     let full = '';
                     for (let i = e.resultIndex; i < e.results.length; ++i) full += e.results[i][0].transcript;
                     currentTranscript = full.trim();
-                    textDisplay.innerText = currentTranscript || "Listening...";
+                    textDisplay.innerText = currentTranscript || "...";
                 };
                 recognition.onend = () => { if (isRec) try { recognition.start(); } catch(e) {} };
-                log("System Initialized");
             }
         }
 
         async function start(lang, side) {
             if (isRec || isProcessing) return;
-            // Prime audio
-            masterAudio.play().then(() => masterAudio.pause()).catch(()=>{});
             isRec = true; currentTranscript = ''; curLang = lang;
-            setUIState('LISTENING');
             document.body.classList.add(side === 'left' ? 'active-left' : 'active-right');
+            setUIState(true);
             textDisplay.innerText = "Listening...";
             if (recognition) {
                 recognition.lang = curLang;
@@ -114,7 +117,6 @@
             if (!isRec) return;
             isRec = false; isProcessing = true;
             document.body.classList.remove('active-left', 'active-right');
-            setUIState('THINKING');
             if (recognition) { try { recognition.stop(); } catch(e) {} }
 
             setTimeout(async () => {
@@ -122,90 +124,39 @@
                     try {
                         const isMM = curLang.startsWith('my');
                         const sl = isMM ? 'my' : 'en', tl = isMM ? 'en' : 'my';
-                        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(currentTranscript)}`;
-                        const res = await fetch(url);
+                        const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(currentTranscript)}`);
                         const data = await res.json();
                         const result = data[0].map(s => s[0]).join('').trim();
                         textDisplay.innerText = result;
-                        await speakNeural(result, tl);
-                    } catch (e) { log("Error: " + e.message); hardReset(); }
+                        await speak(result, tl);
+                    } catch (e) { hardReset(); }
                 } else { hardReset(); }
-            }, 600);
+            }, 400);
         }
 
-        async function speakNeural(text, lang) {
-            setUIState('SPEAKING');
-            const natural = document.getElementById('naturalSw').checked;
-            
-            if (natural) {
-                try {
-                    log("Nilar Neural Load...");
-                    const TTSClass = window.EdgeTTS?.EdgeTTS || window.EdgeTTS?.UniversalEdgeTTS || (window.EdgeTTS && window.EdgeTTS.default) || window.EdgeTTS;
-                    if (!TTSClass) throw new Error("Library Error");
-                    
-                    const tts = new TTSClass();
-                    const voice = (lang === 'my' || lang === 'my-MM') ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
-                    
-                    const audioData = await tts.synthesize(text, voice);
-                    const blob = new Blob([audioData], { type: 'audio/mp3' });
-                    const url = URL.createObjectURL(blob);
-                    
-                    masterAudio.src = url;
-                    masterAudio.onended = () => { URL.revokeObjectURL(url); finishTurn(); };
-                    masterAudio.onerror = () => { throw new Error("Audio Fail"); };
-                    
-                    qualityBadge.innerText = "VOICE: AI (NATURAL)";
-                    qualityBadge.className = "voice-quality voice-ai";
-                    
-                    await masterAudio.play();
-                    return;
-                } catch (e) {
-                    log("Neural Fail: " + e.message);
-                }
-            }
-            fallbackSpeak(text, lang);
-        }
-
-        function fallbackSpeak(text, lang) {
-            log("System Robot Fallback");
-            qualityBadge.innerText = "VOICE: ROBOT (BAD)";
-            qualityBadge.className = "voice-quality voice-sys";
-            
-            const u = new SpeechSynthesisUtterance(text);
-            u.lang = (lang === 'my' || lang === 'my-MM') ? 'my-MM' : 'en-US';
-            u.pitch = 1.1; // Make it sound slightly more human
-            u.onend = () => finishTurn();
-            window.speechSynthesis.speak(u);
-        }
-
-        function finishTurn() {
-            const isCont = document.getElementById('contSw').checked;
-            if (isCont) {
-                isProcessing = false;
-                const nextLang = (curLang === 'my-MM') ? 'en-US' : 'my-MM';
-                const nextSide = (nextLang === 'my-MM') ? 'left' : 'right';
-                setTimeout(() => start(nextLang, nextSide), 1000);
-            } else {
-                isProcessing = false;
-                setUIState('READY');
-            }
-        }
-
-        async function testVoice() {
-            log("Testing Nilar...");
-            await speakNeural("မင်္ဂလာပါ၊ ကျွန်မနာမည် နီလာ ဖြစ်ပါတယ်။ အခု အသံစနစ်က ပိုမို သဘာဝကျလာပါပြီ။", 'my');
+        async function speak(text, lang) {
+            try {
+                const TTS = window.EdgeTTS?.EdgeTTS || window.EdgeTTS;
+                const tts = new TTS();
+                const voice = (lang === 'my' || lang === 'my-MM') ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
+                const audioData = await tts.synthesize(text, voice);
+                const blob = new Blob([audioData], { type: 'audio/mp3' });
+                const url = URL.createObjectURL(blob);
+                masterAudio.src = url;
+                masterAudio.onended = () => { URL.revokeObjectURL(url); hardReset(); };
+                await masterAudio.play();
+            } catch (e) { hardReset(); }
         }
 
         function unlockAudio() {
-            log("Unlocked");
-            masterAudio.play().then(() => masterAudio.pause()).catch(()=>{});
+            masterAudio.play().then(() => { masterAudio.pause(); }).catch(()=>{});
             window.removeEventListener('pointerdown', unlockAudio);
         }
         window.addEventListener('pointerdown', unlockAudio);
 
         function attach(id, lang, side) {
             const btn = document.getElementById(id);
-            btn.addEventListener('click', (e) => { 
+            btn.addEventListener('click', () => { 
                 if (isProcessing) return;
                 if (isRec) stopRecording();
                 else start(lang, side); 
@@ -216,6 +167,7 @@
         attach('btnENG', 'en-US', 'right');
         document.getElementById('menuBtn').addEventListener('click', () => document.getElementById('menu').classList.toggle('open'));
         document.getElementById('themeSw').addEventListener('change', () => document.body.classList.toggle('dark-mode'));
+        textSw.addEventListener('change', () => setUIState(isRec || isProcessing));
         
         initSystem();
     </script>
