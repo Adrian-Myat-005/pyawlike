@@ -11,7 +11,7 @@
     <script src="config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
 </head>
-<body class="dark-mode">
+<body class="">
     
     <div class="bottom-nav">
         <svg id="fsBtn" class="fs-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
@@ -26,7 +26,7 @@
                 <span id="statusIcon" class="status-icon">✕</span>
             </div>
         </div>
-        <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw" checked></div>
+        <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw"></div>
         <div class="menu-item">SHOW TEXT <input type="checkbox" id="textSw" checked></div>
         <button class="clean-btn" onclick="clearVoiceCache()">CLEAN CACHE</button>
     </div>
@@ -56,6 +56,29 @@
         let isRecording = false, recognition = null;
         let naturalMode = localStorage.getItem('natural_mode') === 'true';
 
+        // --- ANIMATIONS ---
+        function createRipple(e, btn) {
+            const circle = document.createElement("span");
+            const diameter = Math.max(btn.clientWidth, btn.clientHeight);
+            const radius = diameter / 2;
+            circle.style.width = circle.style.height = `${diameter}px`;
+            circle.style.left = `${e.clientX - btn.getBoundingClientRect().left - radius}px`;
+            circle.style.top = `${e.clientY - btn.getBoundingClientRect().top - radius}px`;
+            circle.classList.add("ripple");
+            const ripple = btn.getElementsByClassName("ripple")[0];
+            if (ripple) ripple.remove();
+            btn.appendChild(circle);
+        }
+
+        function showTextSmooth(txt) {
+            textDisplay.classList.remove('visible');
+            setTimeout(() => {
+                textDisplay.innerText = txt;
+                if (txt && txt.length > 0) textDisplay.classList.add('visible');
+            }, 50);
+        }
+
+        // --- STATUS & UI ---
         function updateStatusUI() {
             const hasKey = geminiInput.value.trim().length > 5;
             if (naturalMode) {
@@ -63,54 +86,16 @@
                 else { statusBtn.className = "status-switch error"; statusIcon.innerText = "✕"; }
             } else { statusBtn.className = "status-switch"; statusIcon.innerText = "✕"; }
         }
-
-        statusBtn.addEventListener('click', () => {
-            naturalMode = !naturalMode;
-            localStorage.setItem('natural_mode', naturalMode);
-            updateStatusUI();
-        });
-
-        geminiInput.addEventListener('input', () => {
-            localStorage.setItem('gemini_key', geminiInput.value);
-            updateStatusUI();
-        });
-
-        geminiInput.value = localStorage.getItem('gemini_key') || '';
-        updateStatusUI();
-
-        // --- CACHE ---
-        let db;
-        const dbReq = indexedDB.open("VoiceCache", 1);
-        dbReq.onupgradeneeded = (e) => e.target.result.createObjectStore("audio", { keyPath: "id" });
-        dbReq.onsuccess = (e) => db = e.target.result;
-
-        async function getCache(id) {
-            return new Promise(r => {
-                if(!db) return r(null);
-                const t = db.transaction("audio", "readonly").objectStore("audio").get(id);
-                t.onsuccess = () => r(t.result ? t.result.data : null);
-                t.onerror = () => r(null);
-            });
-        }
-
-        async function setCache(id, data) {
-            if(!db) return;
-            const t = db.transaction("audio", "readwrite").objectStore("audio");
-            t.put({ id, data });
-        }
-
-        function clearVoiceCache() {
-            if(!db) return;
-            db.transaction("audio", "readwrite").objectStore("audio").clear();
-            alert("Cache Cleaned");
-        }
+        statusBtn.addEventListener('click', () => { naturalMode = !naturalMode; localStorage.setItem('natural_mode', naturalMode); updateStatusUI(); });
+        geminiInput.addEventListener('input', () => { localStorage.setItem('gemini_key', geminiInput.value); updateStatusUI(); });
+        geminiInput.value = localStorage.getItem('gemini_key') || ''; updateStatusUI();
 
         function updateUI(recording) {
             const showText = textSw.checked;
             if (recording) {
                 if (showText) { textDisplay.style.display = 'block'; waveBox.style.display = 'none'; }
                 else { textDisplay.style.display = 'none'; waveBox.style.display = 'flex'; }
-                textDisplay.innerText = "";
+                showTextSmooth("");
             } else {
                 textDisplay.style.display = showText ? 'block' : 'none';
                 waveBox.style.display = 'none';
@@ -137,7 +122,8 @@
             rec.onresult = (ev) => {
                 let txt = '';
                 for (let i = ev.resultIndex; i < ev.results.length; ++i) txt += ev.results[i][0].transcript;
-                textDisplay.innerText = txt;
+                if (textSw.checked) textDisplay.innerText = txt;
+                if (txt.length > 0) textDisplay.classList.add('visible');
             };
             rec.onend = () => {
                 isRecording = false;
@@ -156,7 +142,7 @@
                 const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`);
                 const data = await res.json();
                 const result = data[0].map(s => s[0]).join('').trim();
-                textDisplay.innerText = result;
+                showTextSmooth(result);
                 playOutput(result, tl);
             } catch (e) { console.error("Trans Error"); }
         }
@@ -166,14 +152,6 @@
             const hasKey = geminiInput.value.trim().length > 5;
 
             if (naturalMode && isBurmese && hasKey) {
-                const cacheId = "aoede_" + text;
-                const cached = await getCache(cacheId);
-                if (cached) {
-                    const blob = new Blob([cached], { type: 'audio/wav' });
-                    audioObj.src = URL.createObjectURL(blob);
-                    await audioObj.play();
-                    return;
-                }
                 try {
                     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiInput.value}`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -185,12 +163,8 @@
                     const data = await res.json();
                     const audioBase64 = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
                     if (audioBase64) {
-                        const binary = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
-                        await setCache(cacheId, binary);
-                        const blob = new Blob([binary], { type: 'audio/wav' });
-                        audioObj.src = URL.createObjectURL(blob);
-                        await audioObj.play();
-                        return;
+                        const blob = new Blob([Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0))], {type:'audio/wav'});
+                        audioObj.src = URL.createObjectURL(blob); await audioObj.play(); return;
                     }
                 } catch (e) { console.log("Gemini Fail"); }
             }
@@ -198,16 +172,8 @@
             try {
                 const serverUrl = window.ENV?.SERVER_URL || "https://pyawlike.vercel.app";
                 const voice = isBurmese ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
-                const res = await fetch(`${serverUrl}/api/edge`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text, voice })
-                });
-                if (res.ok) {
-                    audioObj.src = URL.createObjectURL(await res.blob());
-                    await audioObj.play();
-                    return;
-                }
+                const res = await fetch(`${serverUrl}/api/edge`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice }) });
+                if (res.ok) { audioObj.src = URL.createObjectURL(await res.blob()); await audioObj.play(); return; }
             } catch (e) { console.log("Proxy Fail"); }
 
             const u = new SpeechSynthesisUtterance(text);
@@ -215,8 +181,13 @@
             window.speechSynthesis.speak(u);
         }
 
-        btnMM.addEventListener('click', () => { if(!isRecording) { recognition = initMic('my-MM'); recognition?.start(); } else recognition?.stop(); });
-        btnENG.addEventListener('click', () => { if(!isRecording) { recognition = initMic('en-US'); recognition?.start(); } else recognition?.stop(); });
+        function handleTap(e, lang) {
+            createRipple(e, e.currentTarget);
+            if(!isRecording) { recognition = initMic(lang); recognition?.start(); } else recognition?.stop();
+        }
+
+        btnMM.addEventListener('click', (e) => handleTap(e, 'my-MM'));
+        btnENG.addEventListener('click', (e) => handleTap(e, 'en-US'));
         document.getElementById('themeSw').addEventListener('change', (e) => document.body.classList.toggle('dark-mode', e.target.checked));
         textSw.addEventListener('change', () => updateUI(isRecording));
     </script>
