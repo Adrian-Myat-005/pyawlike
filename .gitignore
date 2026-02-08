@@ -1,5 +1,6 @@
 # Local configuration / API Keys
 config.js
+node_modules
 
 # OS files
 .DS_Store
