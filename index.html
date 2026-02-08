@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike Walkie-Talkie</title>
+    <title>PyawLike Continuous</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
 </head>
 <body class="dark-mode">
-    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.5);color:#0f0;font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.5;">Walkie-Talkie Final Sync</div>
+    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.5);color:#0f0;font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.5;">Continuous Mode Active</div>
     
     <div class="top-nav"><div class="nav-dot" id="menuBtn"></div></div>
     <div class="dropdown" id="menu">
@@ -33,64 +33,76 @@
         const logArea = document.getElementById('debug-log');
         const textDisplay = document.getElementById('textDisplay');
         const masterAudio = new Audio();
-        let isRec = false, finalBuffer = '', curLang = 'en-US';
+        let isRec = false, masterBuffer = '', finalBuffer = '', curLang = 'en-US';
 
-        function log(msg) { logArea.innerText = msg; console.log(msg); }
+        function log(msg) { logArea.innerText = msg; }
 
         const Speech = (window.Capacitor && window.Capacitor.Plugins) ? window.Capacitor.Plugins.SpeechRecognition : null;
 
         async function checkPermissions() {
             if (Speech) {
                 try {
-                    const s = await Speech.requestPermissions();
-                    log("Mic Perms: " + s.speechRecognition);
+                    await Speech.requestPermissions();
+                    log("Mic Ready");
                 } catch (e) { log("Mic Denied"); }
+            }
+        }
+
+        // --- CORE CONTINUOUS MIC ENGINE ---
+        async function runMic() {
+            if (!isRec) return;
+            try {
+                log("Mic Active...");
+                await Speech.start({ 
+                    language: curLang, 
+                    partialResults: true, 
+                    popup: false,
+                    continuous: true // Request continuous mode from native
+                });
+            } catch (e) {
+                log("Mic Error: " + e.message);
+                if (isRec) setTimeout(runMic, 100); // Try restart if still holding
             }
         }
 
         async function start(lang, side) {
             if (isRec) return;
             isRec = true;
+            masterBuffer = '';
             finalBuffer = '';
             curLang = lang;
             
             document.body.classList.add(side === 'left' ? 'active-left' : 'active-right');
             textDisplay.innerText = "Listening...";
-            textDisplay.style.color = "var(--text)";
-            log("Mic Start...");
+            textDisplay.style.color = "#4a90e2";
 
             if (Speech) {
-                try {
-                    Speech.removeAllListeners(); 
-                    
-                    // Handler for both partial and final results
-                    const handleResults = (data) => {
-                        if (data.matches && data.matches.length > 0) {
-                            finalBuffer = data.matches[0];
-                            log("Heard: " + finalBuffer.substring(0, 10) + "...");
-                            textDisplay.innerText = finalBuffer;
-                            textDisplay.style.color = "#4a90e2"; 
-                        }
-                    };
+                Speech.removeAllListeners();
+                
+                // Partial results update the current "live" view
+                Speech.addListener('partialResults', (data) => {
+                    if (data.matches && data.matches.length > 0) {
+                        const currentText = data.matches[0];
+                        finalBuffer = (masterBuffer + " " + currentText).trim();
+                        textDisplay.innerText = finalBuffer;
+                    }
+                });
 
-                    Speech.addListener('partialResults', handleResults);
-                    Speech.addListener('results', handleResults);
-                    
-                    await Speech.start({ 
-                        language: lang, 
-                        partialResults: true, 
-                        popup: false,
-                        maxResults: 1
-                    });
-                } catch (e) { 
-                    log("Error: " + e.message);
-                    stopRecording();
-                }
+                // Final results (when the engine pauses) are saved to the master buffer
+                Speech.addListener('results', (data) => {
+                    if (data.matches && data.matches.length > 0) {
+                        masterBuffer = (masterBuffer + " " + data.matches[0]).trim();
+                        finalBuffer = masterBuffer;
+                        log("Segment Saved");
+                        // If still holding, the engine might have stopped. We ensure it's running.
+                        if (isRec) runMic(); 
+                    }
+                });
+
+                await runMic();
             } else {
-                setTimeout(() => { 
-                    finalBuffer = "Simulated Text"; 
-                    textDisplay.innerText = finalBuffer;
-                }, 1000);
+                // Browser Sim
+                setTimeout(() => { finalBuffer = "Hello world"; textDisplay.innerText = finalBuffer; }, 1000);
             }
         }
 
@@ -102,21 +114,18 @@
             
             if (Speech) {
                 try { await Speech.stop(); } catch (e) {}
+                Speech.removeAllListeners();
             }
 
-            // Wait a bit longer for the last voice packet
             setTimeout(async () => {
                 if (finalBuffer) {
                     textDisplay.style.color = "var(--text)";
                     textDisplay.innerText = "TRANSLATING...";
-                    log("Translating...");
                     await translate(finalBuffer);
                 } else {
                     textDisplay.innerText = "READY";
-                    log("No Speech Detected");
                 }
-                if(Speech) Speech.removeAllListeners();
-            }, 600);
+            }, 500);
         }
 
         async function translate(text) {
@@ -127,12 +136,8 @@
                 const data = await res.json();
                 const translated = data[0].map(s => s[0]).join('').trim();
                 textDisplay.innerText = translated;
-                log("Speaking...");
                 await speak(translated, tl);
-            } catch (e) { 
-                log("Translate Fail"); 
-                textDisplay.innerText = "ERROR";
-            }
+            } catch (e) { textDisplay.innerText = "ERROR"; }
         }
 
         async function speak(text, lang) {
@@ -151,16 +156,8 @@
                         masterAudio.play();
                         return;
                     }
-                } catch (e) { log("Natural Voice Fail"); }
+                } catch (e) {}
             }
-            try {
-                if (typeof EdgeTTS !== 'undefined') {
-                    const voice = lang === 'my' ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
-                    const tts = new EdgeTTS.EdgeTTS();
-                    await tts.speak({ text, voice });
-                    return;
-                }
-            } catch (e) {}
             const u = new SpeechSynthesisUtterance(text);
             u.lang = lang === 'my' ? 'my-MM' : 'en-US';
             window.speechSynthesis.speak(u);
