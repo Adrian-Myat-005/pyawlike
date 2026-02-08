@@ -3,51 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike Universal Pro</title>
+    <title>PyawLike Gold</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
+    <!-- Golden Standard TTS Engine -->
+    <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
     <style>
-        /* Universal Adaptive Sizing */
-        :root {
-            --circle-size: clamp(200px, 50vw, 300px);
-        }
-        .speaker-wrapper {
-            width: var(--circle-size);
-            height: var(--circle-size);
-        }
-        .transcription {
-            font-size: clamp(18px, 4vw, 26px);
-            padding: 0 20px;
-        }
-        .reset-btn {
-            background: #ff4444;
-            color: white;
-            border: none;
-            padding: 10px;
-            border-radius: 10px;
-            font-weight: 800;
-            width: 100%;
-            margin-top: 10px;
-            cursor: pointer;
-        }
+        :root { --circle-size: clamp(220px, 55vw, 320px); }
+        .speaker-wrapper { width: var(--circle-size); height: var(--circle-size); }
+        .transcription { font-size: clamp(20px, 5vw, 28px); padding: 0 25px; min-height: 60px; }
+        .reset-btn { background: #ff4444; color: white; border: none; padding: 12px; border-radius: 12px; font-weight: 800; width: 100%; margin-top: 15px; cursor: pointer; font-size: 12px; }
+        .status-badge { font-size: 10px; font-weight: 900; letter-spacing: 1px; margin-bottom: 10px; opacity: 0.5; }
     </style>
 </head>
 <body class="">
-    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.1);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.6;">System Ready</div>
+    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.6;">System Initializing...</div>
     
     <div class="top-nav" id="menuBtn"><div class="nav-dot"></div></div>
     <div class="dropdown" id="menu">
         <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw"></div>
         <div class="menu-item">SHOW TEXT <input type="checkbox" id="textSw" checked></div>
         <div class="menu-item">NATURAL VOICE <input type="checkbox" id="naturalSw" checked></div>
-        <button class="reset-btn" onclick="forceResetUI(); log('System Reset');">RESET SYSTEM</button>
+        <button class="reset-btn" onclick="hardReset()">HARD RESET SYSTEM</button>
     </div>
 
     <div class="status-area">
-        <div class="transcription" id="textDisplay">READY</div>
+        <div class="status-badge" id="stateBadge">READY</div>
+        <div class="transcription" id="textDisplay">HOLD TO SPEAK</div>
     </div>
 
     <div class="speaker-wrapper">
@@ -60,29 +45,35 @@
     <script>
         const logArea = document.getElementById('debug-log');
         const textDisplay = document.getElementById('textDisplay');
+        const stateBadge = document.getElementById('stateBadge');
         const masterAudio = new Audio();
-        let isRec = false, isProcessing = false, curLang = 'en-US';
-        let currentTranscript = '';
+        
+        let isRec = false, isProcessing = false;
+        let curLang = 'en-US', currentTranscript = '';
         let wakeLock = null;
 
         function log(msg) { logArea.innerText = msg; console.log(msg); }
+        function setUIState(state) {
+            stateBadge.innerText = state;
+            if (state === 'LISTENING') textDisplay.style.color = "var(--accent)";
+            else if (state === 'READY') textDisplay.style.color = "var(--text)";
+        }
 
-        async function forceResetUI() {
+        async function hardReset() {
+            log("Hard Resetting...");
             isRec = false; isProcessing = false;
             document.body.classList.remove('active-left', 'active-right');
+            setUIState('READY');
             textDisplay.innerText = "READY";
-            textDisplay.style.color = "var(--text)";
             if (window.speechSynthesis) window.speechSynthesis.cancel();
             masterAudio.pause();
             if (Speech) {
                 try { await Speech.stop(); } catch(e) {}
                 Speech.removeAllListeners();
-            } else if (recognition) {
-                try { recognition.stop(); } catch(e) {}
             }
         }
 
-        // --- SPEECH ENGINE (UNIVERSAL) ---
+        // --- PHASE 1: MICROPHONE (GOLDEN STANDARD) ---
         let Speech = null;
         let recognition = null;
 
@@ -91,16 +82,15 @@
             
             if (Speech) {
                 try {
-                    const available = await Speech.available();
-                    if (available.available) {
-                        log("Universal Engine Active");
-                        await checkPermissions();
-                    } else {
-                        log("Speech Engine Disabled or Missing");
+                    const avail = await Speech.available();
+                    if (avail.available) {
+                        log("Native Mic Engine Loaded");
+                        const perm = await Speech.checkPermissions();
+                        if (perm.speechRecognition !== 'granted') await Speech.requestPermissions();
                     }
-                } catch (e) { log("Init Error"); }
+                } catch (e) { log("Mic Init Fail"); }
             } else if ('webkitSpeechRecognition' in window) {
-                log("Browser Mode");
+                log("Web Mic Engine Loaded");
                 recognition = new webkitSpeechRecognition();
                 recognition.continuous = true;
                 recognition.interimResults = true;
@@ -114,44 +104,34 @@
             }
         }
 
-        async function checkPermissions() {
-            if (!Speech) return;
-            try {
-                const status = await Speech.checkPermissions();
-                if (status.speechRecognition !== 'granted') {
-                    await Speech.requestPermissions();
-                }
-            } catch (e) { log("Permission Fail"); }
-        }
-
         async function start(lang, side) {
             if (isRec || isProcessing) return;
             
+            // Clean slate based on CodersSmile logic
             if (Speech) {
                 const check = await Speech.isListening();
                 if (check.listening) await Speech.stop();
+                Speech.removeAllListeners();
             }
 
             isRec = true;
             currentTranscript = '';
             curLang = lang;
-
+            
+            setUIState('LISTENING');
             document.body.classList.add(side === 'left' ? 'active-left' : 'active-right');
             textDisplay.innerText = "Listening...";
-            textDisplay.style.color = "var(--accent)";
 
             if (Speech) {
-                Speech.removeAllListeners();
                 Speech.addListener('partialResults', (data) => {
                     if (data.matches && data.matches.length > 0) {
                         currentTranscript = data.matches[0];
                         textDisplay.innerText = currentTranscript;
                     }
                 });
-
                 try {
                     await Speech.start({ language: curLang, partialResults: true, popup: false, continuous: true });
-                } catch (e) { log("Start Error"); isRec = false; }
+                } catch (e) { log("Mic Start Error"); isRec = false; }
             } else if (recognition) {
                 recognition.lang = curLang;
                 try { recognition.start(); } catch(e) {}
@@ -163,7 +143,7 @@
             isRec = false;
             isProcessing = true;
             document.body.classList.remove('active-left', 'active-right');
-            log("Processing...");
+            setUIState('THINKING');
 
             if (Speech) {
                 try { await Speech.stop(); } catch(e) {}
@@ -171,19 +151,19 @@
                 try { recognition.stop(); } catch(e) {}
             }
 
-            // Universal Settle Time (800ms) for slower devices
             setTimeout(async () => {
                 if (currentTranscript) {
-                    textDisplay.style.color = "var(--text)";
                     textDisplay.innerText = "...";
-                    await translate(currentTranscript);
+                    await processPipeline(currentTranscript);
                 } else {
-                    forceResetUI();
+                    hardReset();
                 }
             }, 800);
         }
 
-        async function translate(text) {
+        // --- PHASE 2: LOGIC PIPELINE (PIPELINE REFERENCE) ---
+        async function processPipeline(text) {
+            log("Translating...");
             const isMM = curLang.startsWith('my');
             const sl = isMM ? 'my' : 'en', tl = isMM ? 'en' : 'my';
             try {
@@ -192,47 +172,57 @@
                 const result = data[0].map(s => s[0]).join('').trim();
                 textDisplay.innerText = result;
                 await speak(result, tl);
-            } catch (e) { log("Net Error"); forceResetUI(); }
+            } catch (e) { log("Pipeline Error"); hardReset(); }
         }
 
+        // --- PHASE 3: VOICE OUTPUT (EDGE TTS REFERENCE) ---
         async function speak(text, lang) {
+            setUIState('SPEAKING');
             const natural = document.getElementById('naturalSw').checked;
             let success = false;
 
             if (natural) {
                 try {
-                    const url = window.ENV?.SERVER_URL || window.location.origin;
-                    const res = await fetch(`${url}/api/tts`, {
-                        method: 'POST', headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ text, lang, apiKey: window.ENV?.GEMINI_API_KEY })
-                    });
-                    const data = await res.json();
-                    if (data.audio) {
-                        const blob = new Blob([Uint8Array.from(atob(data.audio), c => c.charCodeAt(0))], {type:'audio/wav'});
-                        const url = URL.createObjectURL(blob);
-                        masterAudio.src = url;
-                        masterAudio.onended = () => { URL.revokeObjectURL(url); isProcessing = false; };
-                        await masterAudio.play();
-                        success = true;
-                    }
-                } catch (e) { log("AI Voice Error"); }
+                    log("Edge TTS Synthetic...");
+                    // Use Edge TTS Universal (Golden Standard for web output)
+                    const tts = new EdgeTTS.EdgeTTS();
+                    // Multi-lingual mapping for all android devices
+                    const voice = (lang === 'my') ? 'my-MM-ThihaNeural' : 'en-US-AvaMultilingualNeural';
+                    await tts.setVoice(voice);
+                    const audioData = await tts.synthesize(text);
+                    const blob = new Blob([audioData], { type: 'audio/mp3' });
+                    const url = URL.createObjectURL(blob);
+                    
+                    masterAudio.src = url;
+                    masterAudio.onended = () => { URL.revokeObjectURL(url); hardReset(); };
+                    masterAudio.onerror = () => { URL.revokeObjectURL(url); fallbackSpeak(text, lang); };
+                    await masterAudio.play();
+                    success = true;
+                } catch (e) { 
+                    log("AI Voice Offline - Falling back");
+                }
             }
 
             if (!success) {
-                if (!window.SpeechSynthesisUtterance) { isProcessing = false; return; }
-                const u = new SpeechSynthesisUtterance(text);
-                u.lang = (lang === 'my') ? 'my-MM' : 'en-US';
-                u.onend = () => { isProcessing = false; };
-                u.onerror = () => { isProcessing = false; };
-                window.speechSynthesis.speak(u);
+                fallbackSpeak(text, lang);
             }
         }
 
+        function fallbackSpeak(text, lang) {
+            log("System Voice");
+            if (!window.SpeechSynthesisUtterance) { hardReset(); return; }
+            window.speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = (lang === 'my') ? 'my-MM' : 'en-US';
+            u.onend = () => hardReset();
+            u.onerror = () => hardReset();
+            window.speechSynthesis.speak(u);
+        }
+
+        // --- UI & LIFECYCLE ---
         function unlockAudio() {
             masterAudio.play().then(() => { masterAudio.pause(); }).catch(() => {});
-            if (window.speechSynthesis) {
-                try { window.speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch(e) {}
-            }
+            if (window.speechSynthesis) window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
             window.removeEventListener('pointerdown', unlockAudio);
         }
         window.addEventListener('pointerdown', unlockAudio);
