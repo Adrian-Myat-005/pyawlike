@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike - Hybrid Mic</title>
+    <title>PyawLike - Fixed Mic</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
@@ -36,7 +36,7 @@
     </div>
 
     <script>
-        // --- SETUP ---
+        // --- 1. SETUP ---
         const btnMM = document.getElementById('btnMM'), btnENG = document.getElementById('btnENG');
         const hWaves = document.getElementById('hWaves'), pLoader = document.getElementById('pLoader'), transcription = document.getElementById('transcription');
         const errorToast = document.getElementById('error-toast'), permStatus = document.getElementById('permStatus');
@@ -48,51 +48,60 @@
         // 🛑 NATIVE MIC PLUGIN 🛑
         const NativeSpeech = window.Capacitor ? Capacitor.Plugins.SpeechRecognition : null;
 
-        // --- 1. FORCE PERMISSIONS (THE FIX) ---
+        // --- 2. FORCE PERMISSIONS ON LOAD ---
         async function checkPerms() {
             if (NativeSpeech) {
                 try {
-                    // This line forces the popup to appear
                     const status = await NativeSpeech.requestPermissions();
                     updateSwitch(status.speechRecognition === 'granted' || status.microphone === 'granted');
                 } catch (e) { console.error("Perm Error:", e); }
             }
         }
 
-        // --- 2. RECORDING LOGIC ---
+        // --- 3. RECORDING LOGIC (FIXED) ---
         async function startRecording(lang) {
+            if (isRecording) return; // 🛑 BLOCK DOUBLE CLICKS 🛑
+            
             wakeUpAudio();
             currentMicLang = lang;
             updateUIState('listening');
+            isRecording = true;
             
             if (NativeSpeech) {
-                // Use Native Plugin
                 try {
-                    await NativeSpeech.start({ language: lang, maxResults: 1, partialResults: true, popup: false });
+                    // POPUP: TRUE -> Shows Google's Listening UI (Visual Feedback)
+                    await NativeSpeech.start({ language: lang, maxResults: 1, partialResults: true, popup: true });
+                    
                     NativeSpeech.addListener('partialResults', (data) => {
                         if (data.matches && data.matches.length > 0) {
                             finalBuffer = data.matches[0];
                             if (showTextSwitch.checked) updateDisplay(finalBuffer);
                         }
                     });
-                    isRecording = true;
-                } catch (e) { resetUI(); }
+                } catch (e) { 
+                    console.error("Mic Failed:", e);
+                    isRecording = false;
+                    resetUI(); 
+                }
             }
         }
 
         async function stopRecording() {
+            if (!isRecording) return;
             updateUIState('processing');
             isRecording = false;
+            
             if (NativeSpeech) {
                 try { await NativeSpeech.stop(); NativeSpeech.removeAllListeners(); } catch(e){}
             }
+            
             setTimeout(() => {
                 if (finalBuffer) processTranslation(finalBuffer);
                 else resetUI();
             }, 500);
         }
 
-        // --- 3. TRANSLATION & TTS ---
+        // --- 4. TRANSLATION & TTS ---
         const AppCache = {
             get: (text, tl) => localStorage.getItem(`pyawlike_${text.trim().toLowerCase()}_${tl}`),
             set: (text, tl, res) => { try { localStorage.setItem(`pyawlike_${text.trim().toLowerCase()}_${tl}`, res); } catch(e){} }
@@ -118,6 +127,7 @@
         }
 
         async function speakLogic(text, lang) {
+            console.log(`Speaking: ${text}`);
             if (naturalSwitch.checked) {
                 try {
                     const serverUrl = window.ENV?.SERVER_URL || '';
@@ -156,14 +166,17 @@
         function showError(msg) { errorToast.textContent = msg; errorToast.style.display = 'block'; setTimeout(()=>errorToast.style.display='none', 3000); }
         function updateSwitch(on) { permStatus.textContent = on ? 'ON' : 'ERR'; permStatus.classList.toggle('active', on); }
 
-        btnMM.addEventListener('mousedown', (e) => { e.preventDefault(); startRecording('my-MM'); });
-        btnMM.addEventListener('mouseup', stopRecording);
-        btnENG.addEventListener('mousedown', (e) => { e.preventDefault(); startRecording('en-US'); });
-        btnENG.addEventListener('mouseup', stopRecording);
+        // --- LISTENERS (FIXED: REMOVED TOUCH EVENTS TO PREVENT DOUBLE CLICK) ---
+        // We only use 'mousedown' which works for both click and touch on most webviews
+        btnMM.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording('my-MM'); });
+        btnMM.addEventListener('touchend', (e) => { e.preventDefault(); stopRecording(); });
+
+        btnENG.addEventListener('touchstart', (e) => { e.preventDefault(); startRecording('en-US'); });
+        btnENG.addEventListener('touchend', (e) => { e.preventDefault(); stopRecording(); });
+        
         document.getElementById('navDot').addEventListener('click', () => document.getElementById('dropdownMenu').classList.toggle('active'));
         themeSwitch.addEventListener('change', (e) => document.body.classList.toggle('dark-mode', e.target.checked));
         
-        // 🚀 CHECK PERMISSIONS ON START 🚀
         (async()=>{ await checkPerms(); })();
     </script>
 </body>
