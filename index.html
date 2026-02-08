@@ -3,15 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike Fluent Pro</title>
+    <title>PyawLike Robust Pro</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <link rel="icon" href="data:,">
     <script src="config.js"></script>
-    <!-- High-Quality Neural TTS Library -->
-    <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
     <style>
         :root { --circle-size: clamp(220px, 50vw, 300px); }
         body { background: var(--bg); transition: 0.3s; overflow: hidden; font-family: 'Inter', sans-serif; }
@@ -28,7 +26,7 @@
     </style>
 </head>
 <body class="">
-    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:100000;border-radius:5px;opacity:0.6;">Nilar Engine Initializing...</div>
+    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:100000;border-radius:5px;opacity:0.6;">Google Engine Active</div>
     
     <div class="top-nav" id="menuBtn"><div class="nav-dot"></div></div>
     <div class="dropdown" id="menu">
@@ -36,7 +34,7 @@
         <div class="menu-item">SHOW TEXT <input type="checkbox" id="textSw" checked></div>
         <div class="menu-item">NATURAL VOICE <input type="checkbox" id="naturalSw" checked></div>
         <div class="menu-item">CONTINUOUS <input type="checkbox" id="contSw"></div>
-        <button onclick="testVoice()" style="background:var(--accent);color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:10px;cursor:pointer;font-size:12px;">TEST NILAR VOICE</button>
+        <button onclick="testVoice()" style="background:var(--accent);color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:10px;cursor:pointer;font-size:12px;">TEST GOOGLE VOICE</button>
         <button onclick="hardReset()" style="background:#ff4444;color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:15px;cursor:pointer;font-size:12px;">HARD RESET</button>
     </div>
 
@@ -89,13 +87,13 @@
                     textDisplay.innerText = currentTranscript || "Listening...";
                 };
                 recognition.onend = () => { if (isRec) try { recognition.start(); } catch(e) {} };
-                log("Voice Engine Ready");
+                log("Google Voice Ready");
             }
         }
 
         async function start(lang, side) {
             if (isRec || isProcessing) return;
-            // Prime audio
+            // Prime audio system
             masterAudio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
             masterAudio.play().catch(()=>{});
 
@@ -136,38 +134,20 @@
             const natural = document.getElementById('naturalSw').checked;
             
             if (natural) {
-                // Priority 1: Nilar Neural
                 try {
-                    log("Nilar Neural: " + lang);
-                    const TTS = window.EdgeTTS?.EdgeTTS || window.EdgeTTS?.UniversalEdgeTTS || window.EdgeTTS;
-                    if (!TTS) throw new Error("Library Missing");
-                    
-                    const tts = new TTS();
-                    const voice = (lang === 'my' || lang === 'my-MM') ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
-                    
-                    const audioData = await tts.synthesize(text, voice);
-                    const blob = new Blob([audioData], { type: 'audio/mp3' });
-                    const url = URL.createObjectURL(blob);
-                    
-                    masterAudio.src = url;
-                    masterAudio.onended = () => { URL.revokeObjectURL(url); finishTurn(); };
-                    masterAudio.onerror = () => { URL.revokeObjectURL(url); throw new Error("Playback Error"); };
-                    await masterAudio.play();
-                    return;
-                } catch (e) {
-                    log("Nilar Fail -> Google");
-                }
-
-                // Priority 2: Google Pro (Fluent Backup)
-                try {
+                    log("Google TTS...");
                     const gLang = (lang === 'my' || lang === 'my-MM') ? 'my' : 'en';
+                    // Classic Google Translate TTS (The "Old Reliable")
                     const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${gLang}&client=tw-ob`;
+                    
                     masterAudio.src = url;
                     masterAudio.onended = () => finishTurn();
                     masterAudio.onerror = () => fallbackSpeak(text, lang);
                     await masterAudio.play();
                     return;
-                } catch (e) { log("Backup Fail"); }
+                } catch (e) {
+                    log("Google Fail -> System");
+                }
             }
             fallbackSpeak(text, lang);
         }
@@ -194,8 +174,8 @@
         }
 
         async function testVoice() {
-            log("Test Nilar...");
-            await speak("မင်္ဂလာပါ၊ ကျွန်မနာမည် နီလာ ဖြစ်ပါတယ်။ အခု အသံစနစ်က ပိုမို သဘာဝကျလာပါပြီ။", 'my');
+            log("Test Google TTS...");
+            await speak("မင်္ဂလာပါ၊ ဒါကတော့ Google ရဲ့ အသံစနစ် ဖြစ်ပါတယ်။", 'my');
         }
 
         function unlockAudio() {
