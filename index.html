@@ -9,7 +9,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
-    <!-- Edge TTS Library -->
     <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
 </head>
 <body class="dark-mode">
@@ -20,8 +19,11 @@
     </div>
 
     <div class="dropdown" id="menu">
+        <input type="password" id="geminiKey" class="api-input" placeholder="GEMINI API KEY">
+        <div class="menu-item">NATURAL MODE <input type="checkbox" id="naturalSw"></div>
         <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw" checked></div>
         <div class="menu-item">SHOW TEXT <input type="checkbox" id="textSw" checked></div>
+        <button class="clean-btn" onclick="clearVoiceCache()">CLEAN CACHE</button>
     </div>
 
     <div class="status-area">
@@ -43,36 +45,54 @@
         const btnMM=document.getElementById('btnMM'), btnENG=document.getElementById('btnENG');
         const textDisplay=document.getElementById('textDisplay'), menu=document.getElementById('menu');
         const textSw=document.getElementById('textSw'), waveBox=document.getElementById('waveBox');
-        const statusLog=document.getElementById('statusLog');
+        const geminiInput=document.getElementById('geminiKey'), naturalSw=document.getElementById('naturalSw');
         const audioObj = new Audio();
         audioObj.volume = 1.0;
         
         let isRecording = false, recognition = null;
 
-        function setStatus(msg) { 
-            statusLog.innerText = msg; 
-            console.log(msg);
+        // --- CACHE SYSTEM (IndexedDB) ---
+        let db;
+        const dbReq = indexedDB.open("VoiceCache", 1);
+        dbReq.onupgradeneeded = (e) => e.target.result.createObjectStore("audio", { keyPath: "id" });
+        dbReq.onsuccess = (e) => db = e.target.result;
+
+        async function getCache(id) {
+            return new Promise(r => {
+                if(!db) return r(null);
+                const t = db.transaction("audio", "readonly").objectStore("audio").get(id);
+                t.onsuccess = () => r(t.result ? t.result.data : null);
+                t.onerror = () => r(null);
+            });
         }
+
+        async function setCache(id, data) {
+            if(!db) return;
+            const t = db.transaction("audio", "readwrite").objectStore("audio");
+            t.put({ id, data });
+        }
+
+        function clearVoiceCache() {
+            if(!db) return;
+            db.transaction("audio", "readwrite").objectStore("audio").clear();
+            alert("Cache Cleaned");
+        }
+
+        // --- PERSISTENCE ---
+        geminiInput.value = localStorage.getItem('gemini_key') || '';
+        naturalSw.checked = localStorage.getItem('natural_mode') === 'true';
+        geminiInput.addEventListener('input', () => localStorage.setItem('gemini_key', geminiInput.value));
+        naturalSw.addEventListener('change', () => localStorage.setItem('natural_mode', naturalSw.checked));
 
         function updateUI(recording) {
             const showText = textSw.checked;
             if (recording) {
-                if (showText) {
-                    textDisplay.style.display = 'block';
-                    waveBox.style.display = 'none';
-                } else {
-                    textDisplay.style.display = 'none';
-                    waveBox.style.display = 'flex';
-                }
+                if (showText) { textDisplay.style.display = 'block'; waveBox.style.display = 'none'; }
+                else { textDisplay.style.display = 'none'; waveBox.style.display = 'flex'; }
             } else {
                 textDisplay.style.display = showText ? 'block' : 'none';
                 waveBox.style.display = 'none';
             }
-        }
-
-        function forceUnlock() {
-            audioObj.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
-            audioObj.play().then(() => { audioObj.pause(); audioObj.currentTime = 0; }).catch(()=>{});
         }
 
         async function toggleFS() {
@@ -85,42 +105,26 @@
         function initMic(lang) {
             const Speech = window.webkitSpeechRecognition || window.speechRecognition;
             if (!Speech) return null;
-            
             const rec = new Speech();
-            rec.lang = lang;
-            rec.continuous = false;
-            rec.interimResults = true;
-
+            rec.lang = lang; rec.continuous = false; rec.interimResults = true;
             rec.onstart = () => {
                 isRecording = true;
                 document.body.classList.add(lang === 'my-MM' ? 'active-left' : 'active-right');
-                setStatus("LISTENING...");
-                textDisplay.innerText = "";
-                updateUI(true);
+                textDisplay.innerText = ""; updateUI(true);
             };
-
             rec.onresult = (ev) => {
                 let txt = '';
                 for (let i = ev.resultIndex; i < ev.results.length; ++i) txt += ev.results[i][0].transcript;
                 textDisplay.innerText = txt;
             };
-
             rec.onend = () => {
                 isRecording = false;
                 document.body.classList.remove('active-left', 'active-right');
-                setStatus("TRANSLATING...");
                 updateUI(false);
-                
                 const finalTxt = textDisplay.innerText;
-                if (finalTxt && finalTxt.trim().length > 0) {
-                    processJob(finalTxt, lang);
-                } else {
-                    setStatus("READY");
-                    textDisplay.innerText = "";
-                }
+                if (finalTxt && finalTxt.trim().length > 0) processJob(finalTxt, lang);
+                else textDisplay.innerText = "";
             };
-
-            rec.onerror = () => { isRecording = false; updateUI(false); };
             return rec;
         }
 
@@ -132,57 +136,68 @@
                 const data = await res.json();
                 const result = data[0].map(s => s[0]).join('').trim();
                 textDisplay.innerText = result;
-                setStatus("SPEAKING...");
                 playOutput(result, tl);
-            } catch (e) { setStatus("TRANS FAIL"); }
+            } catch (e) { console.error("Trans Fail"); }
         }
 
         async function playOutput(text, lang) {
-            // 1. TRY EDGE TTS (Best Quality)
-            try {
-                const EdgeClass = window.EdgeTTS?.EdgeTTS || window.EdgeTTS;
-                if (EdgeClass) {
-                    const tts = new EdgeClass();
-                    const voice = (lang === 'my' || lang === 'my-MM') ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
-                    const audioData = await tts.synthesize(text, voice);
-                    const blob = new Blob([audioData], { type: 'audio/mp3' });
-                    const url = URL.createObjectURL(blob);
-                    
-                    audioObj.src = url;
-                    audioObj.onended = () => { URL.revokeObjectURL(url); setStatus("READY"); updateUI(false); };
+            const isBurmese = (lang === 'my' || lang === 'my-MM');
+            const isNatural = naturalSw.checked;
+            const apiKey = geminiInput.value;
+
+            // --- 1. GEMINI NATURAL MODE (Burmese Only) ---
+            if (isNatural && isBurmese && apiKey) {
+                const cacheId = "gemini_" + text;
+                const cached = await getCache(cacheId);
+                if (cached) {
+                    const blob = new Blob([cached], { type: 'audio/wav' });
+                    audioObj.src = URL.createObjectURL(blob);
                     await audioObj.play();
                     return;
                 }
-            } catch (e) {
-                console.warn("Edge Fail, falling back to Google...");
+
+                try {
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: `Speak naturally in Burmese. No commentary. Just speak: ${text}` }] }],
+                            generationConfig: { responseMimeType: "audio/wav" }
+                        })
+                    });
+                    const data = await res.json();
+                    const audioData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+                    if (audioData) {
+                        const binary = Uint8Array.from(atob(audioData), c => c.charCodeAt(0));
+                        await setCache(cacheId, binary);
+                        const blob = new Blob([binary], { type: 'audio/wav' });
+                        audioObj.src = URL.createObjectURL(blob);
+                        await audioObj.play();
+                        return;
+                    }
+                } catch (e) { console.warn("Gemini Fail, falling back..."); }
             }
 
-            // 2. FALLBACK TO GOOGLE TTS (Reliable)
-            const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${lang}&client=tw-ob`;
-            audioObj.src = url;
-            audioObj.play().catch(e => {
-                // 3. FINAL FALLBACK: SYSTEM TTS
-                const u = new SpeechSynthesisUtterance(text);
-                u.volume = 1.0;
-                u.lang = lang === 'my' ? 'my-MM' : 'en-US';
-                u.onend = () => { setStatus("READY"); updateUI(false); };
-                window.speechSynthesis.speak(u);
-            });
-            audioObj.onended = () => { setStatus("READY"); updateUI(false); };
+            // --- 2. EDGE TTS (English or Natural OFF) ---
+            try {
+                const EdgeClass = window.EdgeTTS?.EdgeTTS || window.EdgeTTS;
+                if (EdgeClass) {
+                    const voice = isBurmese ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
+                    const audioData = await (new EdgeClass()).synthesize(text, voice);
+                    const blob = new Blob([audioData], { type: 'audio/mp3' });
+                    audioObj.src = URL.createObjectURL(blob);
+                    await audioObj.play();
+                    return;
+                }
+            } catch (e) {}
+
+            // --- 3. SYSTEM FALLBACK ---
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = isBurmese ? 'my-MM' : 'en-US';
+            window.speechSynthesis.speak(u);
         }
 
-        function handleTap(lang) {
-            forceUnlock();
-            if (isRecording) {
-                if (recognition) recognition.stop();
-            } else {
-                recognition = initMic(lang);
-                if (recognition) recognition.start();
-            }
-        }
-
-        btnMM.addEventListener('click', () => handleTap('my-MM'));
-        btnENG.addEventListener('click', () => handleTap('en-US'));
+        btnMM.addEventListener('click', () => { if(!isRecording) initMic('my-MM').start(); else recognition.stop(); });
+        btnENG.addEventListener('click', () => { if(!isRecording) initMic('en-US').start(); else recognition.stop(); });
         document.getElementById('themeSw').addEventListener('change', (e) => document.body.classList.toggle('dark-mode', e.target.checked));
         textSw.addEventListener('change', () => updateUI(isRecording));
     </script>
