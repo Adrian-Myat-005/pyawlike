@@ -3,20 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike Fluent Pro</title>
+    <title>PyawLike Universal Pro</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <link rel="icon" href="data:,">
     <script src="config.js"></script>
-    <!-- Modern Fluent TTS Library -->
     <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
     <style>
         :root { --circle-size: clamp(220px, 50vw, 300px); }
         body { background: var(--bg); transition: 0.3s; }
-        
-        /* ULTIMATE VISIBILITY AREA */
         .status-area {
             position: fixed;
             top: 15%;
@@ -33,32 +30,16 @@
             justify-content: center;
             padding: 20px;
             box-shadow: 0 20px 50px var(--shadow-dark);
-            z-index: 99999;
+            z-index: 9999;
             pointer-events: none;
         }
-        
-        .transcription { 
-            font-size: 24px; 
-            font-weight: 800; 
-            color: var(--text); 
-            text-align: center;
-            line-height: 1.3;
-        }
-
-        .status-badge { 
-            font-size: 11px; 
-            font-weight: 900; 
-            letter-spacing: 2px; 
-            color: var(--accent); 
-            margin-bottom: 10px;
-            opacity: 0.7;
-        }
-
+        .transcription { font-size: 24px; font-weight: 800; color: var(--text); text-align: center; line-height: 1.3; }
+        .status-badge { font-size: 11px; font-weight: 900; letter-spacing: 2px; color: var(--accent); margin-bottom: 10px; opacity: 0.7; }
         .speaker-wrapper { position: fixed; bottom: 10%; left: 50%; transform: translateX(-50%); z-index: 1000; }
     </style>
 </head>
 <body class="">
-    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:100000;border-radius:5px;opacity:0.6;">System Booting...</div>
+    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;opacity:0.6;">System Ready</div>
     
     <div class="top-nav" id="menuBtn"><div class="nav-dot"></div></div>
     <div class="dropdown" id="menu">
@@ -66,11 +47,11 @@
         <div class="menu-item">SHOW TEXT <input type="checkbox" id="textSw" checked></div>
         <div class="menu-item">NATURAL VOICE <input type="checkbox" id="naturalSw" checked></div>
         <div class="menu-item">CONTINUOUS <input type="checkbox" id="contSw"></div>
-        <button onclick="testVoice()" style="background:var(--accent);color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:10px;cursor:pointer;font-size:12px;">TEST FLUENT VOICE</button>
+        <button onclick="testVoice()" style="background:var(--accent);color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:10px;cursor:pointer;font-size:12px;">TEST VOICE</button>
         <button onclick="hardReset()" style="background:#ff4444;color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:15px;cursor:pointer;font-size:12px;">HARD RESET</button>
     </div>
 
-    <div class="status-area" id="statusBox">
+    <div class="status-area">
         <div class="status-badge" id="stateBadge">READY</div>
         <div class="transcription" id="textDisplay">READY</div>
     </div>
@@ -86,85 +67,53 @@
         const logArea = document.getElementById('debug-log');
         const textDisplay = document.getElementById('textDisplay');
         const stateBadge = document.getElementById('stateBadge');
-        const masterAudio = new Audio();
+        let masterAudio = new Audio();
         
         let isRec = false, isProcessing = false;
         let curLang = 'en-US', currentTranscript = '';
-        
-        const { Haptics, StatusBar, SpeechRecognition } = (window.Capacitor && window.Capacitor.Plugins) ? window.Capacitor.Plugins : {};
         let recognition = null;
 
         function log(msg) { logArea.innerText = msg; console.log(msg); }
         function setUIState(state) { stateBadge.innerText = state; }
 
         async function hardReset() {
+            log("Resetting...");
             isRec = false; isProcessing = false;
             document.body.classList.remove('active-left', 'active-right');
             setUIState('READY');
             textDisplay.innerText = "READY";
             if (window.speechSynthesis) window.speechSynthesis.cancel();
             masterAudio.pause();
-            if (SpeechRecognition) {
-                try { await SpeechRecognition.stop(); } catch(e) {}
-                SpeechRecognition.removeAllListeners();
-            } else if (recognition) {
-                try { recognition.stop(); } catch(e) {}
-            }
+            masterAudio.src = "";
+            if (recognition) { try { recognition.stop(); } catch(e) {} }
             const isCont = document.getElementById('contSw').checked;
             if (isCont) setTimeout(() => start(curLang, curLang === 'my-MM' ? 'left' : 'right'), 1000);
         }
 
         async function initSystem() {
-            log("Engine Loading...");
-            if (SpeechRecognition) {
-                try {
-                    const avail = await SpeechRecognition.available();
-                    if (avail.available) await SpeechRecognition.requestPermissions();
-                    log("Native Engine Ready");
-                } catch (e) { log("Mic Not Ready"); }
-            } else if ('webkitSpeechRecognition' in window || 'speechRecognition' in window) {
-                log("Browser Engine Ready");
+            if ('webkitSpeechRecognition' in window || 'speechRecognition' in window) {
                 const SpeechReq = window.webkitSpeechRecognition || window.speechRecognition;
                 recognition = new SpeechReq();
                 recognition.continuous = true;
                 recognition.interimResults = true;
                 recognition.onresult = (e) => {
                     let full = '';
-                    for (let i = 0; i < e.results.length; ++i) full += e.results[i][0].transcript;
+                    for (let i = e.resultIndex; i < e.results.length; ++i) full += e.results[i][0].transcript;
                     currentTranscript = full.trim();
-                    textDisplay.innerText = currentTranscript || "Listening...";
+                    if (document.getElementById('textSw').checked) textDisplay.innerText = currentTranscript || "Listening...";
                 };
                 recognition.onend = () => { if (isRec) try { recognition.start(); } catch(e) {} };
-            }
+                log("Voice Engine Active");
+            } else { log("Browser Not Supported"); }
         }
 
         async function start(lang, side) {
             if (isRec || isProcessing) return;
-            if (Haptics) Haptics.impact({ style: 'MEDIUM' }).catch(()=>{});
-
             isRec = true; currentTranscript = ''; curLang = lang;
             setUIState('LISTENING');
             document.body.classList.add(side === 'left' ? 'active-left' : 'active-right');
             textDisplay.innerText = "Listening...";
-
-            if (SpeechRecognition) {
-                SpeechRecognition.removeAllListeners();
-                SpeechRecognition.addListener('partialResults', (data) => {
-                    if (data.matches && data.matches.length > 0) {
-                        currentTranscript = data.matches[0];
-                        textDisplay.innerText = currentTranscript;
-                    }
-                });
-                SpeechRecognition.addListener('results', (data) => {
-                    if (data.matches && data.matches.length > 0) {
-                        currentTranscript = data.matches[0];
-                        textDisplay.innerText = currentTranscript;
-                    }
-                });
-                try {
-                    await SpeechRecognition.start({ language: curLang, partialResults: true, popup: false, continuous: true });
-                } catch (e) { isRec = false; }
-            } else if (recognition) {
+            if (recognition) {
                 recognition.lang = curLang;
                 try { recognition.start(); } catch(e) {}
             }
@@ -175,27 +124,21 @@
             isRec = false; isProcessing = true;
             document.body.classList.remove('active-left', 'active-right');
             setUIState('TRANSLATING');
-            if (Haptics) Haptics.impact({ style: 'LIGHT' }).catch(()=>{});
-
-            if (SpeechRecognition) try { await SpeechRecognition.stop(); } catch(e) {}
-            else if (recognition) try { recognition.stop(); } catch(e) {}
+            if (recognition) { try { recognition.stop(); } catch(e) {} }
 
             setTimeout(async () => {
-                if (currentTranscript) await processPipeline(currentTranscript);
-                else hardReset();
+                if (currentTranscript) {
+                    try {
+                        const isMM = curLang.startsWith('my');
+                        const sl = isMM ? 'my' : 'en', tl = isMM ? 'en' : 'my';
+                        const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(currentTranscript)}`);
+                        const data = await res.json();
+                        const result = data[0].map(s => s[0]).join('').trim();
+                        if (document.getElementById('textSw').checked) textDisplay.innerText = result;
+                        await speak(result, tl);
+                    } catch (e) { log("Translation Crash"); hardReset(); }
+                } else { hardReset(); }
             }, 500);
-        }
-
-        async function processPipeline(text) {
-            const isMM = curLang.startsWith('my');
-            const sl = isMM ? 'my' : 'en', tl = isMM ? 'en' : 'my';
-            try {
-                const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`);
-                const data = await res.json();
-                const result = data[0].map(s => s[0]).join('').trim();
-                textDisplay.innerText = result;
-                await speak(result, tl);
-            } catch (e) { log("Trans Fail"); hardReset(); }
         }
 
         async function speak(text, lang) {
@@ -203,40 +146,53 @@
             const natural = document.getElementById('naturalSw').checked;
             
             if (natural) {
-                // Engine 1: Nilar Neural (Fluent)
+                // Try Nilar Neural (Best Burmese)
                 try {
                     const tts = new EdgeTTS();
-                    const voice = (lang === 'my') ? 'my-MM-NilarNeural' : 'en-US-EmmaNeural';
+                    const voice = (lang === 'my') ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
                     log("Neural Synthesis...");
                     const audioData = await tts.synthesize(text, voice);
                     const blob = new Blob([audioData], { type: 'audio/mpeg' });
                     const url = URL.createObjectURL(blob);
+                    
+                    masterAudio.pause();
                     masterAudio.src = url;
                     masterAudio.onended = () => { URL.revokeObjectURL(url); hardReset(); };
                     masterAudio.onerror = () => { throw new Error("Audio Error"); };
                     await masterAudio.play();
                     return;
                 } catch (e) {
-                    log("Neural Fail -> Google Proxy");
+                    log("Neural Fail -> Google");
                 }
 
-                // Engine 2: Google Mobile Neural (Fluent Backup)
+                // Try Google Natural (Backup)
                 try {
                     const gLang = (lang === 'my') ? 'my' : 'en';
                     const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${gLang}&client=tw-ob`;
+                    masterAudio.pause();
                     masterAudio.src = url;
                     masterAudio.onended = () => hardReset();
                     masterAudio.onerror = () => fallbackSpeak(text, lang);
                     await masterAudio.play();
                     return;
-                } catch (e) { log("Backup Fail"); }
+                } catch (e) { log("TTS Crash"); }
             }
             fallbackSpeak(text, lang);
         }
 
+        function fallbackSpeak(text, lang) {
+            log("System Voice");
+            if (!window.SpeechSynthesisUtterance) { hardReset(); return; }
+            window.speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = (lang === 'my') ? 'my-MM' : 'en-US';
+            u.onend = () => hardReset();
+            window.speechSynthesis.speak(u);
+        }
+
         async function testVoice() {
-            log("Test Fluent Burmese...");
-            await speak("မင်္ဂလာပါ၊ ကျွန်မနာမည် နီလာ ဖြစ်ပါတယ်။ အခု အသံစနစ်က ပိုမို သဘာဝကျလာပါပြီ။", 'my');
+            log("Testing Voice...");
+            await speak("မင်္ဂလာပါ၊ အခု အသံစနစ်က ကောင်းမွန်စွာ အလုပ်လုပ်နေပါတယ်။", 'my');
         }
 
         function unlockAudio() {
@@ -249,31 +205,19 @@
 
         function attach(id, lang, side) {
             const btn = document.getElementById(id);
-            btn.addEventListener('pointerdown', (e) => { 
-                e.preventDefault(); 
+            btn.addEventListener('click', (e) => { 
                 if (isProcessing) return;
-                
-                if (isRec) {
-                    // Click to Close
-                    stopRecording();
-                } else {
-                    // Click to Open
-                    start(lang, side); 
-                }
+                if (isRec) stopRecording();
+                else start(lang, side); 
             });
         }
 
         attach('btnMM', 'my-MM', 'left');
         attach('btnENG', 'en-US', 'right');
         document.getElementById('menuBtn').addEventListener('click', () => document.getElementById('menu').classList.toggle('open'));
+        document.getElementById('themeSw').addEventListener('change', () => document.body.classList.toggle('dark-mode'));
         
-        document.getElementById('themeSw').addEventListener('change', () => {
-            const isDark = document.getElementById('themeSw').checked;
-            document.body.classList.toggle('dark-mode', isDark);
-        });
-
-        document.addEventListener('deviceready', initSystem, false);
-        setTimeout(() => { if (!SpeechRecognition && !recognition) initSystem(); }, 1500);
+        initSystem();
     </script>
 </body>
 </html>
