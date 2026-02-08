@@ -10,7 +10,6 @@
     <link rel="stylesheet" href="style.css">
     <link rel="icon" href="data:,">
     <script src="config.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
     <style>
         :root { --circle-size: clamp(220px, 50vw, 300px); }
         .speaker-wrapper { width: var(--circle-size); height: var(--circle-size); }
@@ -31,15 +30,13 @@
             align-items: center;
             justify-content: center;
             min-height: 100px;
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         }
         .transcription { font-size: clamp(18px, 4vw, 24px); font-weight: 700; color: var(--text); text-align: center; width: 100%; }
         .status-badge { font-size: 10px; font-weight: 900; letter-spacing: 2px; margin-bottom: 12px; color: var(--accent); text-transform: uppercase; }
-        body.active-left .status-area, body.active-right .status-area { transform: translateX(-50%) scale(1.03); border: 2px solid var(--accent); }
     </style>
 </head>
 <body class="">
-    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.6;">System Stable</div>
+    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.6;">System Secure</div>
     
     <div class="top-nav" id="menuBtn"><div class="nav-dot"></div></div>
     <div class="dropdown" id="menu">
@@ -96,15 +93,15 @@
         }
 
         async function initSystem() {
-            log("Initializing...");
+            log("Engine Init...");
             if (SpeechRecognition) {
                 try {
                     const avail = await SpeechRecognition.available();
                     if (avail.available) {
                         await SpeechRecognition.requestPermissions();
-                        log("Mic Ready");
+                        log("Native Mic Ready");
                     }
-                } catch (e) { log("Mic Error"); }
+                } catch (e) { log("Mic Not Found"); }
             } else if ('webkitSpeechRecognition' in window || 'speechRecognition' in window) {
                 log("Browser Mic Ready");
                 const SpeechReq = window.webkitSpeechRecognition || window.speechRecognition;
@@ -115,7 +112,7 @@
                     let full = '';
                     for (let i = 0; i < e.results.length; ++i) full += e.results[i][0].transcript;
                     currentTranscript = full.trim();
-                    if (document.getElementById('textSw').checked) textDisplay.innerText = currentTranscript || "Listening...";
+                    textDisplay.innerText = currentTranscript || "Listening...";
                 };
                 recognition.onend = () => { if (isRec) try { recognition.start(); } catch(e) {} };
             }
@@ -132,10 +129,17 @@
 
             if (SpeechRecognition) {
                 SpeechRecognition.removeAllListeners();
+                // FIX 1: Watch BOTH partial and final results for maximum stability
                 SpeechRecognition.addListener('partialResults', (data) => {
                     if (data.matches && data.matches.length > 0) {
                         currentTranscript = data.matches[0];
-                        if (document.getElementById('textSw').checked) textDisplay.innerText = currentTranscript;
+                        textDisplay.innerText = currentTranscript;
+                    }
+                });
+                SpeechRecognition.addListener('results', (data) => {
+                    if (data.matches && data.matches.length > 0) {
+                        currentTranscript = data.matches[0];
+                        textDisplay.innerText = currentTranscript;
                     }
                 });
                 try {
@@ -158,22 +162,26 @@
             else if (recognition) try { recognition.stop(); } catch(e) {}
 
             setTimeout(async () => {
-                if (currentTranscript) await processPipeline(currentTranscript);
-                else hardReset();
-            }, 400);
+                if (currentTranscript) {
+                    await processPipeline(currentTranscript);
+                } else {
+                    log("Silence detected");
+                    hardReset();
+                }
+            }, 500);
         }
 
         async function processPipeline(text) {
             const isMM = curLang.startsWith('my');
             const sl = isMM ? 'my' : 'en', tl = isMM ? 'en' : 'my';
             try {
-                // High-Speed Reliable Endpoint
+                // FIX 2: Using the Guaranteed Single-Fetch Endpoint
                 const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`);
                 const data = await res.json();
                 const result = data[0].map(s => s[0]).join('').trim();
-                if (document.getElementById('textSw').checked) textDisplay.innerText = result;
+                textDisplay.innerText = result;
                 await speak(result, tl);
-            } catch (e) { log("Trans Error"); hardReset(); }
+            } catch (e) { log("Trans Fail"); hardReset(); }
         }
 
         async function speak(text, lang) {
@@ -182,18 +190,16 @@
             
             if (natural) {
                 try {
-                    log("Voice Output...");
+                    // FIX 3: Using the "Open-Proxy" Google voice engine (No key, No block)
                     const gLang = (lang === 'my') ? 'my' : 'en';
-                    // Using the highly-reliable Google Proxy Engine for Android
                     const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${gLang}&client=tw-ob`;
                     masterAudio.src = url;
                     masterAudio.onended = () => hardReset();
-                    masterAudio.onerror = () => { fallbackSpeak(text, lang); };
+                    masterAudio.onerror = () => fallbackSpeak(text, lang);
                     await masterAudio.play();
+                    log("Voice Output OK");
                     return;
-                } catch (e) { 
-                    log("Voice Error -> System"); 
-                }
+                } catch (e) { log("Audio Blocked"); }
             }
             fallbackSpeak(text, lang);
         }
@@ -209,11 +215,13 @@
         }
 
         async function testVoice() {
-            log("Testing Voice...");
-            await speak("System is stable and ready.", 'en-US');
+            log("Test Audio...");
+            await speak("Voice check complete.", 'en-US');
         }
 
         function unlockAudio() {
+            log("Audio Unlocked");
+            // FORCE UNLOCK for Android WebView
             masterAudio.play().then(() => { masterAudio.pause(); }).catch(() => {});
             if (window.speechSynthesis) window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
             window.removeEventListener('pointerdown', unlockAudio);
@@ -222,16 +230,22 @@
 
         function attach(id, lang, side) {
             const btn = document.getElementById(id);
-            btn.addEventListener('pointerdown', (e) => { e.preventDefault(); btn.setPointerCapture(e.pointerId); start(lang, side); });
-            btn.addEventListener('pointerup', (e) => { e.preventDefault(); btn.releasePointerCapture(e.pointerId); stopRecording(); });
+            btn.addEventListener('pointerdown', (e) => { 
+                e.preventDefault(); 
+                btn.setPointerCapture(e.pointerId); 
+                start(lang, side); 
+            });
+            btn.addEventListener('pointerup', (e) => { 
+                e.preventDefault(); 
+                btn.releasePointerCapture(e.pointerId); 
+                stopRecording(); 
+            });
         }
 
         attach('btnMM', 'my-MM', 'left');
         attach('btnENG', 'en-US', 'right');
         document.getElementById('menuBtn').addEventListener('click', () => document.getElementById('menu').classList.toggle('open'));
-        
         document.addEventListener('deviceready', initSystem, false);
-        // Fallback for laptop browser
         setTimeout(() => { if (!SpeechRecognition && !recognition) initSystem(); }, 1500);
     </script>
 </body>
