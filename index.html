@@ -38,36 +38,42 @@
         const masterAudio = new Audio();
         let isRec = false, isProcessing = false, masterBuffer = '', finalBuffer = '', curLang = 'en-US';
         let wakeLock = null;
-
-        // --- GLOBAL ERROR TRAP ---
-        window.onerror = function(msg, source, lineno, colno, error) {
-            const errorMsg = "CRASH: " + msg + " (" + lineno + ":" + colno + ")";
-            log(errorMsg);
-            console.error(errorMsg, error);
-            isProcessing = false;
-            document.body.classList.remove('active-left', 'active-right');
-            return false;
-        };
+        let processingWatchdog = null;
 
         function log(msg) { 
             console.log(msg);
             logArea.innerText = msg; 
         }
 
+        // --- GLOBAL SAFETY RESET ---
+        function forceResetUI() {
+            log("Force Resetting...");
+            isRec = false;
+            isProcessing = false;
+            document.body.classList.remove('active-left', 'active-right');
+            textDisplay.innerText = "READY";
+            textDisplay.style.color = "var(--text)";
+            if (window.speechSynthesis) window.speechSynthesis.cancel();
+            masterAudio.pause();
+            if (processingWatchdog) clearTimeout(processingWatchdog);
+        }
+
+        window.onerror = function(msg) {
+            log("CRASH: " + msg);
+            forceResetUI();
+            return false;
+        };
+
         // --- WAKE LOCK ---
         async function requestWakeLock() {
             if ('wakeLock' in navigator) {
-                try {
-                    wakeLock = await navigator.wakeLock.request('screen');
-                    log("Screen Locked");
-                } catch (err) {}
+                try { wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
             }
         }
         document.addEventListener('visibilitychange', () => {
             if (wakeLock !== null && document.visibilityState === 'visible') requestWakeLock();
         });
 
-        // --- FETCH WITH TIMEOUT ---
         async function fetchWithTimeout(resource, options = {}) {
             const { timeout = 10000 } = options;
             const controller = new AbortController();
@@ -82,32 +88,24 @@
             }
         }
 
-        // --- THEME ---
         const themeSw = document.getElementById('themeSw');
-        themeSw.addEventListener('change', () => {
-            document.body.classList.toggle('dark-mode', themeSw.checked);
-        });
+        themeSw.addEventListener('change', () => document.body.classList.toggle('dark-mode', themeSw.checked));
 
-        // --- AUDIO UNLOCK ---
         function unlockAudio() {
             log("Unlocking Audio...");
             if (window.SpeechSynthesisUtterance) {
-                try {
-                    const silent = new SpeechSynthesisUtterance("");
-                    window.speechSynthesis.speak(silent);
-                } catch (e) { log("TTS Unlock Fail"); }
+                try { window.speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch (e) {}
             }
             masterAudio.play().then(() => {
                 masterAudio.pause();
                 masterAudio.currentTime = 0;
                 log("Audio Unlocked");
-            }).catch(() => { log("Audio Play Blocked"); });
+            }).catch(() => {});
             window.removeEventListener('pointerdown', unlockAudio);
             requestWakeLock();
         }
         window.addEventListener('pointerdown', unlockAudio);
 
-        // --- RIPPLE ---
         function createRipple(e, btn) {
             const circle = document.createElement("span");
             const diameter = Math.max(btn.clientWidth, btn.clientHeight);
@@ -121,22 +119,19 @@
             btn.appendChild(circle);
         }
 
-        // --- INITIALIZE SPEECH ---
         let Speech = null;
         let recognition = null;
 
         function initSpeech() {
             Speech = (window.Capacitor && window.Capacitor.Plugins) ? window.Capacitor.Plugins.SpeechRecognition : null;
-            
             if (Speech) {
-                log("Capacitor Speech Found");
+                log("Capacitor Engine");
             } else if ('webkitSpeechRecognition' in window || 'speechRecognition' in window) {
-                log("WebSpeech Found");
+                log("Web Engine");
                 const SpeechRecognition = window.webkitSpeechRecognition || window.speechRecognition;
                 recognition = new SpeechRecognition();
                 recognition.continuous = true;
                 recognition.interimResults = true;
-
                 recognition.onresult = (event) => {
                     let interimTranscript = '';
                     for (let i = event.resultIndex; i < event.results.length; ++i) {
@@ -146,15 +141,8 @@
                     finalBuffer = (masterBuffer + interimTranscript).trim();
                     textDisplay.innerText = finalBuffer || "Listening...";
                 };
-
-                recognition.onerror = (event) => {
-                    if (event.error === 'no-speech') return;
-                    log("Mic Error: " + event.error);
-                };
-
+                recognition.onerror = (event) => { if (event.error !== 'no-speech') log("Mic: " + event.error); };
                 recognition.onend = () => { if (isRec) try { recognition.start(); } catch(e) {} };
-            } else {
-                log("No Speech Engine!");
             }
             checkPermissions();
         }
@@ -162,31 +150,21 @@
         async function checkPermissions() {
             if (Speech) {
                 try {
-                    log("Checking Perms...");
                     const perm = await Speech.checkPermissions();
-                    log("Perm status: " + perm.speechRecognition);
-                    if (perm.speechRecognition !== 'granted') {
-                        log("Requesting Perms...");
-                        const req = await Speech.requestPermissions();
-                        log("New Perm: " + req.speechRecognition);
-                    }
-                } catch (e) { log("Perm Error: " + e.message); }
+                    if (perm.speechRecognition !== 'granted') await Speech.requestPermissions();
+                    log("Mic Ready");
+                } catch (e) { log("Mic Error"); }
             }
         }
 
         async function runMic() {
             if (!isRec) return;
             try {
-                if (Speech) {
-                    await Speech.start({ language: curLang, partialResults: true, popup: false, continuous: true });
-                } else if (recognition) {
-                    recognition.lang = curLang;
-                    recognition.start();
-                }
-                log("Listening (" + curLang + ")...");
+                if (Speech) await Speech.start({ language: curLang, partialResults: true, popup: false, continuous: true });
+                else if (recognition) { recognition.lang = curLang; recognition.start(); }
             } catch (e) {
-                log("Mic Start Fail: " + e.message);
-                if (isRec) setTimeout(runMic, 500);
+                log("Mic Fail");
+                if (isRec) setTimeout(runMic, 1000);
             }
         }
 
@@ -196,14 +174,11 @@
             masterBuffer = '';
             finalBuffer = '';
             curLang = lang;
-            
             document.body.classList.add(side === 'left' ? 'active-left' : 'active-right');
             textDisplay.innerText = "Listening...";
             textDisplay.style.color = "var(--accent)";
-
             if (window.speechSynthesis) window.speechSynthesis.cancel();
             masterAudio.pause();
-
             if (Speech) {
                 Speech.removeAllListeners();
                 Speech.addListener('partialResults', (data) => {
@@ -213,10 +188,7 @@
                     }
                 });
                 Speech.addListener('results', (data) => {
-                    if (data.matches && data.matches.length > 0) {
-                        masterBuffer = (masterBuffer + " " + data.matches[0]).trim();
-                        finalBuffer = masterBuffer;
-                    }
+                    if (data.matches && data.matches.length > 0) masterBuffer = (masterBuffer + " " + data.matches[0]).trim();
                 });
             }
             await runMic();
@@ -228,13 +200,15 @@
             isProcessing = true;
             document.body.classList.remove('active-left', 'active-right');
             log("Processing...");
-            
-            if (Speech) {
-                try { await Speech.stop(); } catch (e) {}
-                Speech.removeAllListeners();
-            } else if (recognition) {
-                try { recognition.stop(); } catch (e) {}
-            }
+
+            // Safety Watchdog: If nothing happens for 15s, reset.
+            processingWatchdog = setTimeout(() => {
+                if (isProcessing) { log("Process Timeout"); forceResetUI(); }
+            }, 15000);
+
+            // Trigger stop, but don't await indefinitely
+            if (Speech) { Speech.stop().catch(()=>{}); Speech.removeAllListeners(); }
+            else if (recognition) { try { recognition.stop(); } catch(e) {} }
 
             setTimeout(async () => {
                 if (finalBuffer) {
@@ -242,13 +216,13 @@
                     textDisplay.innerText = "..."; 
                     await translate(finalBuffer);
                 } else {
-                    textDisplay.innerText = "READY";
-                    isProcessing = false;
+                    forceResetUI();
                 }
-            }, 400);
+            }, 500);
         }
 
         async function translate(text) {
+            log("Translating...");
             const isMM = curLang.startsWith('my');
             const sl = isMM ? 'my' : 'en', tl = isMM ? 'en' : 'my';
             try {
@@ -258,13 +232,14 @@
                 textDisplay.innerText = translated;
                 await speak(translated, tl);
             } catch (e) { 
-                log("Translate Error");
-                textDisplay.innerText = "TRY AGAIN";
-                isProcessing = false;
+                log("Network Fail");
+                textDisplay.innerText = "ERROR";
+                setTimeout(forceResetUI, 2000);
             }
         }
 
         async function speak(text, lang) {
+            log("Speaking...");
             const natural = document.getElementById('naturalSw').checked;
             let playedNatural = false;
 
@@ -274,38 +249,35 @@
                     const res = await fetchWithTimeout(`${url}/api/tts`, {
                         method: 'POST', headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({ text, lang, apiKey: window.ENV?.GEMINI_API_KEY }),
-                        timeout: 12000
+                        timeout: 10000
                     });
                     const data = await res.json();
                     if (data.audio) {
                         const b = new Blob([Uint8Array.from(atob(data.audio), c => c.charCodeAt(0))], {type:'audio/wav'});
                         const blobUrl = URL.createObjectURL(b);
                         masterAudio.src = blobUrl;
-                        masterAudio.onended = () => { URL.revokeObjectURL(blobUrl); isProcessing = false; };
+                        masterAudio.onended = () => { URL.revokeObjectURL(blobUrl); forceResetUI(); };
                         masterAudio.onerror = () => { URL.revokeObjectURL(blobUrl); fallbackSpeak(text, lang); };
                         await masterAudio.play();
                         playedNatural = true;
                         log("Gemini Voice OK");
                     }
-                } catch (e) { log("Gemini TTS Fail"); }
+                } catch (e) { log("Gemini Fallback"); }
             }
             if (!playedNatural) fallbackSpeak(text, lang);
         }
 
         function fallbackSpeak(text, lang) {
-            if (!window.SpeechSynthesisUtterance || !window.speechSynthesis) {
-                log("No System TTS!");
-                isProcessing = false;
-                return;
-            }
-            log("Using System Voice");
+            if (!window.SpeechSynthesisUtterance) { forceResetUI(); return; }
+            log("System Voice");
             window.speechSynthesis.cancel();
             const u = new SpeechSynthesisUtterance(text);
             u.lang = (lang === 'my') ? 'my-MM' : 'en-US';
-            const watchdog = setTimeout(() => { if (isProcessing) { isProcessing = false; window.speechSynthesis.cancel(); } }, 8000);
-            u.onend = () => { clearTimeout(watchdog); isProcessing = false; };
-            u.onerror = () => { clearTimeout(watchdog); isProcessing = false; log("TTS Error"); };
+            u.onend = () => forceResetUI();
+            u.onerror = () => { log("TTS Error"); forceResetUI(); };
             window.speechSynthesis.speak(u);
+            // Fallback watchdog for the fallback voice
+            setTimeout(() => { if (isProcessing) forceResetUI(); }, 7000);
         }
 
         function attach(id, lang, side) {
@@ -317,16 +289,8 @@
         attach('btnMM', 'my-MM', 'left');
         attach('btnENG', 'en-US', 'right');
         document.getElementById('menuBtn').addEventListener('click', () => document.getElementById('menu').classList.toggle('open'));
-
-        // Handle Capacitor ready
         document.addEventListener('deviceready', initSpeech, false);
-        // Fallback for browser or if deviceready doesn't fire
         setTimeout(() => { if (!Speech && !recognition) initSpeech(); }, 2000);
-
-        if (window.speechSynthesis) {
-            window.speechSynthesis.getVoices();
-            if (speechSynthesis.onvoiceschanged !== undefined) speechSynthesis.onvoiceschanged = () => speechSynthesis.getVoices();
-        }
     </script>
 </body>
 </html>
