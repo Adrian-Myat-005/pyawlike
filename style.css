@@ -20,6 +20,7 @@ body {
     font-family: 'Inter', sans-serif; overflow: hidden; 
     display: flex; justify-content: center; align-items: center; 
     transition: background 0.4s;
+    touch-action: none;
 }
 
 .speaker-wrapper { 
@@ -28,6 +29,7 @@ body {
     transform: translate(-50%, -50%); 
     width: 240px; height: 240px; 
     z-index: 9999; 
+    pointer-events: auto;
 }
 
 .split-btn-container { 
@@ -37,6 +39,7 @@ body {
     box-shadow: 12px 12px 25px var(--shadow-dark), -12px -12px 25px var(--shadow-light); 
     transition: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
     overflow: hidden;
+    pointer-events: auto;
 }
 
 .half-btn { 
@@ -44,9 +47,11 @@ body {
     background: transparent; cursor: pointer; 
     display: flex; justify-content: center; align-items: center; 
     position: relative;
+    pointer-events: auto;
+    z-index: 10000;
 }
 
-.btn-label { font-weight: 900; opacity: 0.3; font-size: 16px; letter-spacing: 2px; }
+.btn-label { font-weight: 900; opacity: 0.3; font-size: 16px; letter-spacing: 2px; pointer-events: none; }
 
 /* Pulse Animation */
 @keyframes pulse {
@@ -60,6 +65,7 @@ body.active-right .split-btn-container { animation: pulse 1.5s infinite; border-
 .status-area { 
     position: absolute; top: 15%; left: 50%; 
     transform: translateX(-50%); text-align: center; width: 80vw; 
+    pointer-events: none; z-index: 100;
 }
 .transcription { font-size: 24px; font-weight: 700; opacity: 0.9; }
 
@@ -73,7 +79,7 @@ body.active-right .split-btn-container { animation: pulse 1.5s infinite; border-
     position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px); 
     background: var(--btn-white); padding: 20px; border-radius: 24px; 
     box-shadow: 0 -20px 50px rgba(0,0,0,0.1); opacity: 0; pointer-events: none; 
-    transition: 0.4s; z-index: 1000; 
+    transition: 0.4s; z-index: 100000; 
 }
 .dropdown.open { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
 .menu-item { display: flex; justify-content: space-between; width: 200px; margin-bottom: 15px; font-size: 12px; font-weight: 800; opacity: 0.7; }
