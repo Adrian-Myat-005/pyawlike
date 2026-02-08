@@ -3,21 +3,47 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike Robust Pro</title>
+    <title>PyawLike Universal Pro</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
+    <style>
+        /* Universal Adaptive Sizing */
+        :root {
+            --circle-size: clamp(200px, 50vw, 300px);
+        }
+        .speaker-wrapper {
+            width: var(--circle-size);
+            height: var(--circle-size);
+        }
+        .transcription {
+            font-size: clamp(18px, 4vw, 26px);
+            padding: 0 20px;
+        }
+        .reset-btn {
+            background: #ff4444;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 10px;
+            font-weight: 800;
+            width: 100%;
+            margin-top: 10px;
+            cursor: pointer;
+        }
+    </style>
 </head>
 <body class="">
-    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.1);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.5;">Initializing Pro Engine...</div>
+    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.1);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.6;">System Ready</div>
     
     <div class="top-nav" id="menuBtn"><div class="nav-dot"></div></div>
     <div class="dropdown" id="menu">
         <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw"></div>
         <div class="menu-item">SHOW TEXT <input type="checkbox" id="textSw" checked></div>
         <div class="menu-item">NATURAL VOICE <input type="checkbox" id="naturalSw" checked></div>
+        <button class="reset-btn" onclick="forceResetUI(); log('System Reset');">RESET SYSTEM</button>
     </div>
 
     <div class="status-area">
@@ -41,16 +67,22 @@
 
         function log(msg) { logArea.innerText = msg; console.log(msg); }
 
-        function forceResetUI() {
+        async function forceResetUI() {
             isRec = false; isProcessing = false;
             document.body.classList.remove('active-left', 'active-right');
             textDisplay.innerText = "READY";
             textDisplay.style.color = "var(--text)";
             if (window.speechSynthesis) window.speechSynthesis.cancel();
             masterAudio.pause();
+            if (Speech) {
+                try { await Speech.stop(); } catch(e) {}
+                Speech.removeAllListeners();
+            } else if (recognition) {
+                try { recognition.stop(); } catch(e) {}
+            }
         }
 
-        // --- SPEECH ENGINE (V6 ROBUST) ---
+        // --- SPEECH ENGINE (UNIVERSAL) ---
         let Speech = null;
         let recognition = null;
 
@@ -61,22 +93,20 @@
                 try {
                     const available = await Speech.available();
                     if (available.available) {
-                        log("Engine Ready");
+                        log("Universal Engine Active");
                         await checkPermissions();
                     } else {
-                        log("Device not supported");
+                        log("Speech Engine Disabled or Missing");
                     }
                 } catch (e) { log("Init Error"); }
             } else if ('webkitSpeechRecognition' in window) {
-                log("Web Mode");
+                log("Browser Mode");
                 recognition = new webkitSpeechRecognition();
                 recognition.continuous = true;
                 recognition.interimResults = true;
                 recognition.onresult = (e) => {
                     let full = '';
-                    for (let i = 0; i < e.results.length; ++i) {
-                        full += e.results[i][0].transcript;
-                    }
+                    for (let i = 0; i < e.results.length; ++i) full += e.results[i][0].transcript;
                     currentTranscript = full.trim();
                     textDisplay.innerText = currentTranscript || "Listening...";
                 };
@@ -89,7 +119,6 @@
             try {
                 const status = await Speech.checkPermissions();
                 if (status.speechRecognition !== 'granted') {
-                    log("Requesting Access...");
                     await Speech.requestPermissions();
                 }
             } catch (e) { log("Permission Fail"); }
@@ -98,13 +127,9 @@
         async function start(lang, side) {
             if (isRec || isProcessing) return;
             
-            // Pro Safeguard: Check if already listening
             if (Speech) {
                 const check = await Speech.isListening();
-                if (check.listening) {
-                    await Speech.stop();
-                    await new Promise(r => setTimeout(r, 100));
-                }
+                if (check.listening) await Speech.stop();
             }
 
             isRec = true;
@@ -125,12 +150,7 @@
                 });
 
                 try {
-                    await Speech.start({
-                        language: curLang,
-                        partialResults: true,
-                        popup: false,
-                        continuous: true
-                    });
+                    await Speech.start({ language: curLang, partialResults: true, popup: false, continuous: true });
                 } catch (e) { log("Start Error"); isRec = false; }
             } else if (recognition) {
                 recognition.lang = curLang;
@@ -147,11 +167,11 @@
 
             if (Speech) {
                 try { await Speech.stop(); } catch(e) {}
-                Speech.removeAllListeners();
             } else if (recognition) {
                 try { recognition.stop(); } catch(e) {}
             }
 
+            // Universal Settle Time (800ms) for slower devices
             setTimeout(async () => {
                 if (currentTranscript) {
                     textDisplay.style.color = "var(--text)";
@@ -160,7 +180,7 @@
                 } else {
                     forceResetUI();
                 }
-            }, 600);
+            }, 800);
         }
 
         async function translate(text) {
@@ -195,7 +215,7 @@
                         await masterAudio.play();
                         success = true;
                     }
-                } catch (e) { log("Gemini Fail"); }
+                } catch (e) { log("AI Voice Error"); }
             }
 
             if (!success) {
