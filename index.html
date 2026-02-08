@@ -70,11 +70,19 @@
             btn.appendChild(circle);
         }
 
+        let textTimer = null;
         function showTextSmooth(txt) {
+            if (textTimer) clearTimeout(textTimer);
             textDisplay.classList.remove('visible');
             setTimeout(() => {
                 textDisplay.innerText = txt;
-                if (txt && txt.length > 0) textDisplay.classList.add('visible');
+                if (txt && txt.length > 0) {
+                    textDisplay.classList.add('visible');
+                    // Auto-hide after 5 seconds
+                    textTimer = setTimeout(() => {
+                        textDisplay.classList.remove('visible');
+                    }, 5000);
+                }
             }, 50);
         }
 
@@ -107,7 +115,17 @@
             else document.exitFullscreen().catch(()=>{});
         }
         document.getElementById('fsBtn').addEventListener('click', toggleFS);
-        document.getElementById('menuBtn').addEventListener('click', () => menu.classList.toggle('open'));
+        document.getElementById('menuBtn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            menu.classList.toggle('open');
+        });
+
+        // Close menu when clicking outside
+        window.addEventListener('click', (e) => {
+            if (menu.classList.contains('open') && !menu.contains(e.target) && e.target.id !== 'menuBtn') {
+                menu.classList.remove('open');
+            }
+        });
 
         function initMic(lang) {
             // Wake Up Server instantly
