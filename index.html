@@ -9,7 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
 </head>
 <body class="dark-mode">
-    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.5);color:#0f0;font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.5;">Walkie-Talkie Sync Fix</div>
+    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.5);color:#0f0;font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.5;">Walkie-Talkie Final Sync</div>
     
     <div class="top-nav"><div class="nav-dot" id="menuBtn"></div></div>
     <div class="dropdown" id="menu">
@@ -35,16 +35,16 @@
         const masterAudio = new Audio();
         let isRec = false, finalBuffer = '', curLang = 'en-US';
 
-        function log(msg) { logArea.innerText = msg; }
+        function log(msg) { logArea.innerText = msg; console.log(msg); }
 
         const Speech = (window.Capacitor && window.Capacitor.Plugins) ? window.Capacitor.Plugins.SpeechRecognition : null;
 
         async function checkPermissions() {
             if (Speech) {
                 try {
-                    await Speech.requestPermissions();
-                    log("Mic Ready");
-                } catch (e) { log("Mic Access Denied"); }
+                    const s = await Speech.requestPermissions();
+                    log("Mic Perms: " + s.speechRecognition);
+                } catch (e) { log("Mic Denied"); }
             }
         }
 
@@ -57,33 +57,38 @@
             document.body.classList.add(side === 'left' ? 'active-left' : 'active-right');
             textDisplay.innerText = "Listening...";
             textDisplay.style.color = "var(--text)";
-            log("Mic Opening...");
+            log("Mic Start...");
 
             if (Speech) {
                 try {
                     Speech.removeAllListeners(); 
                     
-                    Speech.addListener('partialResults', (data) => {
+                    // Handler for both partial and final results
+                    const handleResults = (data) => {
                         if (data.matches && data.matches.length > 0) {
                             finalBuffer = data.matches[0];
-                            // FORCE UI UPDATE
-                            requestAnimationFrame(() => {
-                                textDisplay.innerText = finalBuffer;
-                                // Subtle color change to indicate live data
-                                textDisplay.style.color = "#4a90e2"; 
-                            });
+                            log("Heard: " + finalBuffer.substring(0, 10) + "...");
+                            textDisplay.innerText = finalBuffer;
+                            textDisplay.style.color = "#4a90e2"; 
                         }
-                    });
+                    };
 
-                    await Speech.start({ language: lang, partialResults: true, popup: false });
-                    log("Got Voice Data...");
+                    Speech.addListener('partialResults', handleResults);
+                    Speech.addListener('results', handleResults);
+                    
+                    await Speech.start({ 
+                        language: lang, 
+                        partialResults: true, 
+                        popup: false,
+                        maxResults: 1
+                    });
                 } catch (e) { 
-                    log("Start Fail: " + e.message);
+                    log("Error: " + e.message);
                     stopRecording();
                 }
             } else {
                 setTimeout(() => { 
-                    finalBuffer = lang.startsWith('my') ? "မင်္ဂလာပါ" : "Hello"; 
+                    finalBuffer = "Simulated Text"; 
                     textDisplay.innerText = finalBuffer;
                 }, 1000);
             }
@@ -99,17 +104,19 @@
                 try { await Speech.stop(); } catch (e) {}
             }
 
+            // Wait a bit longer for the last voice packet
             setTimeout(async () => {
                 if (finalBuffer) {
                     textDisplay.style.color = "var(--text)";
                     textDisplay.innerText = "TRANSLATING...";
+                    log("Translating...");
                     await translate(finalBuffer);
                 } else {
                     textDisplay.innerText = "READY";
-                    log("No Speech");
+                    log("No Speech Detected");
                 }
                 if(Speech) Speech.removeAllListeners();
-            }, 400);
+            }, 600);
         }
 
         async function translate(text) {
@@ -120,9 +127,10 @@
                 const data = await res.json();
                 const translated = data[0].map(s => s[0]).join('').trim();
                 textDisplay.innerText = translated;
+                log("Speaking...");
                 await speak(translated, tl);
             } catch (e) { 
-                log("Trans Error"); 
+                log("Translate Fail"); 
                 textDisplay.innerText = "ERROR";
             }
         }
@@ -143,7 +151,7 @@
                         masterAudio.play();
                         return;
                     }
-                } catch (e) {}
+                } catch (e) { log("Natural Voice Fail"); }
             }
             try {
                 if (typeof EdgeTTS !== 'undefined') {
