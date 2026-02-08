@@ -3,14 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike Chat-Voice</title>
+    <title>PyawLike Proxy</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <link rel="icon" href="data:,">
     <script src="config.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
 </head>
 <body class="dark-mode">
     
@@ -33,7 +30,7 @@
     </div>
 
     <div class="status-area">
-        <div class="transcription" id="textDisplay"></div>
+        <div class="transcription" id="textDisplay">Ready</div>
         <div class="wave-box" id="waveBox">
             <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
         </div>
@@ -47,16 +44,17 @@
     </div>
 
     <script>
+        // --- SETUP ---
         const btnMM=document.getElementById('btnMM'), btnENG=document.getElementById('btnENG');
         const textDisplay=document.getElementById('textDisplay'), menu=document.getElementById('menu');
         const textSw=document.getElementById('textSw'), waveBox=document.getElementById('waveBox');
         const geminiInput=document.getElementById('geminiKey'), statusBtn=document.getElementById('statusBtn'), statusIcon=document.getElementById('statusIcon');
         const audioObj = new Audio();
-        audioObj.volume = 1.0;
         
         let isRecording = false, recognition = null;
         let naturalMode = localStorage.getItem('natural_mode') === 'true';
 
+        // --- STATUS & UI ---
         function updateStatusUI() {
             const hasKey = geminiInput.value.trim().length > 5;
             if (naturalMode) {
@@ -64,88 +62,89 @@
                 else { statusBtn.className = "status-switch error"; statusIcon.innerText = "✕"; }
             } else { statusBtn.className = "status-switch"; statusIcon.innerText = "✕"; }
         }
-
-        statusBtn.addEventListener('click', () => {
-            naturalMode = !naturalMode;
-            localStorage.setItem('natural_mode', naturalMode);
-            updateStatusUI();
-        });
-
-        geminiInput.addEventListener('input', () => {
-            localStorage.setItem('gemini_key', geminiInput.value);
-            updateStatusUI();
-        });
-
-        geminiInput.value = localStorage.getItem('gemini_key') || '';
-        updateStatusUI();
-
-        // --- CACHE ---
-        let db;
-        const dbReq = indexedDB.open("VoiceCache", 1);
-        dbReq.onupgradeneeded = (e) => e.target.result.createObjectStore("audio", { keyPath: "id" });
-        dbReq.onsuccess = (e) => db = e.target.result;
-
-        async function getCache(id) {
-            return new Promise(r => {
-                if(!db) return r(null);
-                const t = db.transaction("audio", "readonly").objectStore("audio").get(id);
-                t.onsuccess = () => r(t.result ? t.result.data : null);
-                t.onerror = () => r(null);
-            });
-        }
-
-        async function setCache(id, data) {
-            if(!db) return;
-            const t = db.transaction("audio", "readwrite").objectStore("audio");
-            t.put({ id, data });
-        }
-
-        function clearVoiceCache() {
-            if(!db) return;
-            db.transaction("audio", "readwrite").objectStore("audio").clear();
-            alert("Cache Cleaned");
-        }
+        statusBtn.addEventListener('click', () => { naturalMode = !naturalMode; localStorage.setItem('natural_mode', naturalMode); updateStatusUI(); });
+        geminiInput.addEventListener('input', () => { localStorage.setItem('gemini_key', geminiInput.value); updateStatusUI(); });
+        geminiInput.value = localStorage.getItem('gemini_key') || ''; updateStatusUI();
 
         function updateUI(recording) {
             const showText = textSw.checked;
             if (recording) {
-                if (showText) { textDisplay.style.display = 'block'; waveBox.style.display = 'none'; }
-                else { textDisplay.style.display = 'none'; waveBox.style.display = 'flex'; }
+                textDisplay.style.display = showText ? 'block' : 'none';
+                waveBox.style.display = showText ? 'none' : 'flex';
+                textDisplay.innerText = "Listening...";
             } else {
                 textDisplay.style.display = showText ? 'block' : 'none';
                 waveBox.style.display = 'none';
             }
         }
 
-        async function toggleFS() {
-            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
-            else document.exitFullscreen().catch(()=>{});
-        }
-        document.getElementById('fsBtn').addEventListener('click', toggleFS);
-        document.getElementById('menuBtn').addEventListener('click', () => menu.classList.toggle('open'));
+        // --- PLAY OUTPUT (THE FIX) ---
+        async function playOutput(text, lang) {
+            const isBurmese = (lang === 'my' || lang === 'my-MM');
+            const hasKey = geminiInput.value.trim().length > 5;
 
+            // A. GEMINI MODE (If enabled)
+            if (naturalMode && isBurmese && hasKey) {
+                try {
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiInput.value}`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ role: "user", parts: [{ text: `Read naturally: ${text}` }] }],
+                            generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } } }
+                        })
+                    });
+                    const data = await res.json();
+                    const audioBase64 = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
+                    if (audioBase64) {
+                        const blob = new Blob([Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0))], {type:'audio/wav'});
+                        audioObj.src = URL.createObjectURL(blob); await audioObj.play(); return;
+                    }
+                } catch(e) { console.log("Gemini Fail, trying Edge..."); }
+            }
+
+            // B. EDGE TTS PROXY (Server-Side)
+            try {
+                console.log("Calling Server Proxy...");
+                const voice = isBurmese ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
+                
+                // Use the Server URL from config.js, or fallback to current origin
+                const baseUrl = window.ENV?.SERVER_URL || window.location.origin;
+                
+                const res = await fetch(`${baseUrl}/api/edge`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text, voice })
+                });
+
+                if (res.ok) {
+                    const blob = await res.blob();
+                    audioObj.src = URL.createObjectURL(blob);
+                    await audioObj.play();
+                    return;
+                } else {
+                    console.warn("Proxy Error:", await res.text());
+                }
+            } catch (e) { console.error("Edge Proxy Failed:", e); }
+
+            // C. SYSTEM FALLBACK (Last Resort)
+            console.log("Using System Fallback");
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = isBurmese ? 'my-MM' : 'en-US';
+            window.speechSynthesis.speak(u);
+        }
+
+        // --- MIC LOGIC ---
         function initMic(lang) {
             const Speech = window.webkitSpeechRecognition || window.speechRecognition;
-            if (!Speech) return null;
+            if (!Speech) { alert("Mic not supported"); return null; }
             const rec = new Speech();
             rec.lang = lang; rec.continuous = false; rec.interimResults = true;
-            rec.onstart = () => {
-                isRecording = true;
-                document.body.classList.add(lang === 'my-MM' ? 'active-left' : 'active-right');
-                textDisplay.innerText = ""; updateUI(true);
-            };
-            rec.onresult = (ev) => {
-                let txt = '';
-                for (let i = ev.resultIndex; i < ev.results.length; ++i) txt += ev.results[i][0].transcript;
-                textDisplay.innerText = txt;
-            };
+            rec.onstart = () => { isRecording = true; document.body.classList.add(lang==='my-MM'?'active-left':'active-right'); updateUI(true); };
+            rec.onresult = (ev) => { let t=''; for(let i=ev.resultIndex;i<ev.results.length;++i)t+=ev.results[i][0].transcript; textDisplay.innerText=t; };
             rec.onend = () => {
-                isRecording = false;
-                document.body.classList.remove('active-left', 'active-right');
-                updateUI(false);
-                const finalTxt = textDisplay.innerText;
-                if (finalTxt && finalTxt.trim().length > 0) processJob(finalTxt, lang);
-                else textDisplay.innerText = "";
+                isRecording = false; document.body.classList.remove('active-left','active-right'); updateUI(false);
+                const txt = textDisplay.innerText;
+                if(txt && txt!=='Listening...') processJob(txt, lang);
             };
             return rec;
         }
@@ -159,72 +158,14 @@
                 const result = data[0].map(s => s[0]).join('').trim();
                 textDisplay.innerText = result;
                 playOutput(result, tl);
-            } catch (e) { console.error("Trans Fail"); }
+            } catch (e) { textDisplay.innerText = "Error"; }
         }
 
-        async function playOutput(text, lang) {
-            const isBurmese = (lang === 'my' || lang === 'my-MM');
-            const hasKey = geminiInput.value.trim().length > 5;
-
-            // --- 1. GEMINI AOEDE VOICE (With Stable Header Logic) ---
-            if (naturalMode && isBurmese && hasKey) {
-                const cacheId = "aoede_" + text;
-                const cached = await getCache(cacheId);
-                if (cached) {
-                    const blob = new Blob([cached], { type: 'audio/wav' });
-                    audioObj.src = URL.createObjectURL(blob);
-                    await audioObj.play();
-                    return;
-                }
-
-                try {
-                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiInput.value}`, {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            contents: [{ role: "user", parts: [{ text: `Read this Burmese text naturally: ${text}` }] }],
-                            generationConfig: { 
-                                responseModalities: ["AUDIO"],
-                                speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } }
-                            }
-                        })
-                    });
-                    const data = await res.json();
-                    const audioBase64 = data.candidates?.[0]?.content?.parts?.find(p => p.inlineData)?.inlineData?.data;
-                    
-                    if (audioBase64) {
-                        // Gemini wav already has header if requested correctly, or use raw data
-                        const binary = Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0));
-                        await setCache(cacheId, binary);
-                        const blob = new Blob([binary], { type: 'audio/wav' });
-                        audioObj.src = URL.createObjectURL(blob);
-                        await audioObj.play();
-                        return;
-                    }
-                } catch (e) { console.warn("Gemini Chat Voice Fail, trying Edge..."); }
-            }
-
-            // --- 2. EDGE TTS FALLBACK ---
-            try {
-                const EdgeClass = window.EdgeTTS?.EdgeTTS || window.EdgeTTS;
-                if (EdgeClass) {
-                    const voice = isBurmese ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
-                    const audioData = await (new EdgeClass()).synthesize(text, voice);
-                    const blob = new Blob([audioData], { type: 'audio/mp3' });
-                    audioObj.src = URL.createObjectURL(blob);
-                    await audioObj.play();
-                    return;
-                }
-            } catch (e) {}
-
-            // --- 3. SYSTEM FALLBACK ---
-            const u = new SpeechSynthesisUtterance(text);
-            u.lang = isBurmese ? 'my-MM' : 'en-US';
-            window.speechSynthesis.speak(u);
-        }
-
-        btnMM.addEventListener('click', () => { if(!isRecording) { recognition = initMic('my-MM'); if(recognition) recognition.start(); } else recognition.stop(); });
-        btnENG.addEventListener('click', () => { if(!isRecording) { recognition = initMic('en-US'); if(recognition) recognition.start(); } else recognition.stop(); });
+        btnMM.addEventListener('click', () => { if(!isRecording) { recognition = initMic('my-MM'); recognition?.start(); } else recognition?.stop(); });
+        btnENG.addEventListener('click', () => { if(!isRecording) { recognition = initMic('en-US'); recognition?.start(); } else recognition?.stop(); });
+        document.getElementById('menuBtn').addEventListener('click', () => menu.classList.toggle('open'));
         document.getElementById('themeSw').addEventListener('change', (e) => document.body.classList.toggle('dark-mode', e.target.checked));
+        document.getElementById('fsBtn').addEventListener('click', () => { !document.fullscreenElement ? document.documentElement.requestFullscreen() : document.exitFullscreen(); });
         textSw.addEventListener('change', () => updateUI(isRecording));
     </script>
 </body>
