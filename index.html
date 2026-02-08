@@ -41,6 +41,7 @@
         <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw"></div>
         <div class="menu-item">SHOW TEXT <input type="checkbox" id="textSw" checked></div>
         <div class="menu-item">NATURAL VOICE <input type="checkbox" id="naturalSw" checked></div>
+        <div class="menu-item">CONTINUOUS <input type="checkbox" id="contSw"></div>
         <button onclick="testVoice()" style="background:var(--accent);color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:10px;cursor:pointer;font-size:12px;">TEST VOICE OUTPUT</button>
         <button onclick="hardReset()" style="background:#ff4444;color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:15px;cursor:pointer;font-size:12px;">HARD RESET SYSTEM</button>
     </div>
@@ -81,6 +82,12 @@
             if (SpeechRecognition) {
                 try { await SpeechRecognition.stop(); } catch(e) {}
                 SpeechRecognition.removeAllListeners();
+            }
+            
+            // Auto-restart for Speech-to-Speech loop
+            const isCont = document.getElementById('contSw').checked;
+            if (isCont) {
+                setTimeout(() => start(curLang, curLang === 'my-MM' ? 'left' : 'right'), 500);
             }
         }
 
