@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike Robust</title>
+    <title>PyawLike Pro</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
@@ -24,6 +24,9 @@
 
     <div class="status-area">
         <div class="transcription" id="textDisplay">Ready</div>
+        <div class="wave-box" id="waveBox">
+            <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
+        </div>
         <div class="debug-line" id="statusLog">SYSTEM READY</div>
     </div>
 
@@ -37,21 +40,32 @@
     <script>
         const btnMM=document.getElementById('btnMM'), btnENG=document.getElementById('btnENG');
         const textDisplay=document.getElementById('textDisplay'), menu=document.getElementById('menu');
+        const textSw=document.getElementById('textSw'), waveBox=document.getElementById('waveBox');
         const statusLog=document.getElementById('statusLog');
         const audioObj = new Audio();
         let isRecording = false, recognition = null;
 
         function setStatus(msg) { statusLog.innerText = msg; }
 
-        // --- THE AUDIO DRILL: FORCE UNLOCK ON EVERY CLICK ---
+        function updateUI(recording) {
+            const showText = textSw.checked;
+            if (recording) {
+                if (showText) {
+                    textDisplay.style.display = 'block';
+                    waveBox.style.display = 'none';
+                } else {
+                    textDisplay.style.display = 'none';
+                    waveBox.style.display = 'flex';
+                }
+            } else {
+                textDisplay.style.display = showText ? 'block' : 'none';
+                waveBox.style.display = 'none';
+            }
+        }
+
         function forceUnlock() {
-            // Play a real silent wav buffer to drill through Android blocks
             audioObj.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
-            audioObj.play().then(() => {
-                audioObj.pause();
-                audioObj.currentTime = 0;
-                log("Audio channel open");
-            }).catch(e => log("Audio block attempt"));
+            audioObj.play().then(() => { audioObj.pause(); audioObj.currentTime = 0; }).catch(()=>{});
         }
 
         async function toggleFS() {
@@ -75,6 +89,7 @@
                 document.body.classList.add(lang === 'my-MM' ? 'active-left' : 'active-right');
                 setStatus("LISTENING...");
                 textDisplay.innerText = "...";
+                updateUI(true);
             };
 
             rec.onresult = (ev) => {
@@ -87,6 +102,7 @@
                 isRecording = false;
                 document.body.classList.remove('active-left', 'active-right');
                 setStatus("TRANSLATING...");
+                updateUI(false);
                 
                 const finalTxt = textDisplay.innerText;
                 if (finalTxt && finalTxt !== "..." && finalTxt !== "Ready") {
@@ -97,7 +113,7 @@
                 }
             };
 
-            rec.onerror = (e) => { setStatus("ERROR: " + e.error); isRecording = false; };
+            rec.onerror = (e) => { setStatus("ERROR: " + e.error); isRecording = false; updateUI(false); };
             return rec;
         }
 
@@ -116,21 +132,19 @@
         }
 
         function playOutput(text, lang) {
-            // Use the standard high-reliability link
             const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${lang}&client=tw-ob`;
             audioObj.src = url;
             audioObj.play().catch(e => {
                 setStatus("AUDIO BLOCKED");
-                // Final fallback
                 const u = new SpeechSynthesisUtterance(text);
                 u.lang = lang === 'my' ? 'my-MM' : 'en-US';
                 window.speechSynthesis.speak(u);
             });
-            audioObj.onended = () => setStatus("READY");
+            audioObj.onended = () => { setStatus("READY"); updateUI(false); };
         }
 
         function handleTap(lang) {
-            forceUnlock(); // Drill the audio channel first
+            forceUnlock();
             if (isRecording) {
                 if (recognition) recognition.stop();
             } else {
@@ -142,6 +156,7 @@
         btnMM.addEventListener('click', () => handleTap('my-MM'));
         btnENG.addEventListener('click', () => handleTap('en-US'));
         document.getElementById('themeSw').addEventListener('change', (e) => document.body.classList.toggle('dark-mode', e.target.checked));
+        textSw.addEventListener('change', () => updateUI(isRecording));
     </script>
 </body>
 </html>
