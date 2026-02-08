@@ -20,7 +20,12 @@
 
     <div class="dropdown" id="menu">
         <input type="password" id="geminiKey" class="api-input" placeholder="GEMINI API KEY">
-        <div class="menu-item">NATURAL MODE <input type="checkbox" id="naturalSw"></div>
+        <div class="menu-item">
+            NATURAL MODE
+            <div id="statusBtn" class="status-switch">
+                <span id="statusIcon" class="status-icon">✕</span>
+            </div>
+        </div>
         <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw" checked></div>
         <div class="menu-item">SHOW TEXT <input type="checkbox" id="textSw" checked></div>
         <button class="clean-btn" onclick="clearVoiceCache()">CLEAN CACHE</button>
@@ -31,7 +36,6 @@
         <div class="wave-box" id="waveBox">
             <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
         </div>
-        <div class="debug-line" id="statusLog" style="display:none;">SYSTEM READY</div>
     </div>
 
     <div class="speaker-wrapper">
@@ -45,13 +49,45 @@
         const btnMM=document.getElementById('btnMM'), btnENG=document.getElementById('btnENG');
         const textDisplay=document.getElementById('textDisplay'), menu=document.getElementById('menu');
         const textSw=document.getElementById('textSw'), waveBox=document.getElementById('waveBox');
-        const geminiInput=document.getElementById('geminiKey'), naturalSw=document.getElementById('naturalSw');
+        const geminiInput=document.getElementById('geminiKey'), statusBtn=document.getElementById('statusBtn'), statusIcon=document.getElementById('statusIcon');
         const audioObj = new Audio();
         audioObj.volume = 1.0;
         
         let isRecording = false, recognition = null;
+        let naturalMode = localStorage.getItem('natural_mode') === 'true';
 
-        // --- CACHE SYSTEM (IndexedDB) ---
+        // --- UI UPDATE FOR STATUS BUTTON ---
+        function updateStatusUI() {
+            const hasKey = geminiInput.value.trim().length > 5;
+            if (naturalMode) {
+                if (hasKey) {
+                    statusBtn.className = "status-switch active";
+                    statusIcon.innerText = "✓";
+                } else {
+                    statusBtn.className = "status-switch error";
+                    statusIcon.innerText = "✕";
+                }
+            } else {
+                statusBtn.className = "status-switch";
+                statusIcon.innerText = "✕";
+            }
+        }
+
+        statusBtn.addEventListener('click', () => {
+            naturalMode = !naturalMode;
+            localStorage.setItem('natural_mode', naturalMode);
+            updateStatusUI();
+        });
+
+        geminiInput.addEventListener('input', () => {
+            localStorage.setItem('gemini_key', geminiInput.value);
+            updateStatusUI();
+        });
+
+        geminiInput.value = localStorage.getItem('gemini_key') || '';
+        updateStatusUI();
+
+        // --- CACHE SYSTEM ---
         let db;
         const dbReq = indexedDB.open("VoiceCache", 1);
         dbReq.onupgradeneeded = (e) => e.target.result.createObjectStore("audio", { keyPath: "id" });
@@ -77,12 +113,6 @@
             db.transaction("audio", "readwrite").objectStore("audio").clear();
             alert("Cache Cleaned");
         }
-
-        // --- PERSISTENCE ---
-        geminiInput.value = localStorage.getItem('gemini_key') || '';
-        naturalSw.checked = localStorage.getItem('natural_mode') === 'true';
-        geminiInput.addEventListener('input', () => localStorage.setItem('gemini_key', geminiInput.value));
-        naturalSw.addEventListener('change', () => localStorage.setItem('natural_mode', naturalSw.checked));
 
         function updateUI(recording) {
             const showText = textSw.checked;
@@ -142,11 +172,9 @@
 
         async function playOutput(text, lang) {
             const isBurmese = (lang === 'my' || lang === 'my-MM');
-            const isNatural = naturalSw.checked;
-            const apiKey = geminiInput.value;
+            const hasKey = geminiInput.value.trim().length > 5;
 
-            // --- 1. GEMINI NATURAL MODE (Burmese Only) ---
-            if (isNatural && isBurmese && apiKey) {
+            if (naturalMode && isBurmese && hasKey) {
                 const cacheId = "gemini_" + text;
                 const cached = await getCache(cacheId);
                 if (cached) {
@@ -157,7 +185,7 @@
                 }
 
                 try {
-                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+                    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiInput.value}`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             contents: [{ parts: [{ text: `Speak naturally in Burmese. No commentary. Just speak: ${text}` }] }],
@@ -174,10 +202,9 @@
                         await audioObj.play();
                         return;
                     }
-                } catch (e) { console.warn("Gemini Fail, falling back..."); }
+                } catch (e) { console.warn("Gemini Fail..."); }
             }
 
-            // --- 2. EDGE TTS (English or Natural OFF) ---
             try {
                 const EdgeClass = window.EdgeTTS?.EdgeTTS || window.EdgeTTS;
                 if (EdgeClass) {
@@ -190,14 +217,13 @@
                 }
             } catch (e) {}
 
-            // --- 3. SYSTEM FALLBACK ---
             const u = new SpeechSynthesisUtterance(text);
             u.lang = isBurmese ? 'my-MM' : 'en-US';
             window.speechSynthesis.speak(u);
         }
 
-        btnMM.addEventListener('click', () => { if(!isRecording) initMic('my-MM').start(); else recognition.stop(); });
-        btnENG.addEventListener('click', () => { if(!isRecording) initMic('en-US').start(); else recognition.stop(); });
+        btnMM.addEventListener('click', () => { if(!isRecording) { recognition = initMic('my-MM'); if(recognition) recognition.start(); } else recognition.stop(); });
+        btnENG.addEventListener('click', () => { if(!isRecording) { recognition = initMic('en-US'); if(recognition) recognition.start(); } else recognition.stop(); });
         document.getElementById('themeSw').addEventListener('change', (e) => document.body.classList.toggle('dark-mode', e.target.checked));
         textSw.addEventListener('change', () => updateUI(isRecording));
     </script>

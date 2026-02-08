@@ -5,6 +5,8 @@
     --btn-white: #ffffff; 
     --shadow-dark: rgba(93, 87, 74, 0.15);
     --shadow-light: rgba(255, 255, 255, 0.8);
+    --success: #4caf50;
+    --error: #f44336;
 }
 body.dark-mode { 
     --bg: #121212; 
@@ -48,7 +50,6 @@ body {
 
 .btn-label { font-weight: 900; opacity: 0.3; font-size: 16px; letter-spacing: 2px; }
 
-/* Pulse Animation */
 @keyframes pulse {
     0% { transform: scale(1); }
     50% { transform: scale(0.97); }
@@ -82,25 +83,39 @@ body.active-right .split-btn-container { animation: pulse 1.5s infinite; border-
 .fs-icon { width: 16px; height: 16px; opacity: 0.2; cursor: pointer; transition: 0.3s; fill: var(--text); }
 .nav-dot:hover, .fs-icon:hover { opacity: 0.6; }
 
-/* DROPDOWN - Optimized for API input */
+/* DROPDOWN */
 .dropdown { 
     position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px); 
-    background: var(--btn-white); padding: 20px; border-radius: 24px; 
+    background: var(--btn-white); padding: 25px; border-radius: 24px; 
     box-shadow: 0 -20px 50px rgba(0,0,0,0.1); opacity: 0; pointer-events: none; 
-    transition: 0.4s; z-index: 100000; 
+    transition: 0.4s; z-index: 100000; width: 240px;
 }
 .dropdown.open { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
-.menu-item { display: flex; justify-content: space-between; align-items: center; width: 220px; margin-bottom: 15px; font-size: 11px; font-weight: 800; opacity: 0.6; }
+
+.menu-item { display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 20px; font-size: 11px; font-weight: 800; opacity: 0.6; }
 .menu-item:last-child { margin-bottom: 0; }
 
 .api-input {
-    width: 100%; background: rgba(0,0,0,0.05); border: none; padding: 10px; border-radius: 10px;
-    font-size: 10px; font-family: monospace; color: var(--text); margin-bottom: 15px; outline: none;
+    width: calc(100% - 20px); background: rgba(0,0,0,0.05); border: none; padding: 12px 10px; border-radius: 12px;
+    font-size: 10px; font-family: monospace; color: var(--text); margin-bottom: 20px; outline: none;
 }
 body.dark-mode .api-input { background: rgba(255,255,255,0.05); }
 
+/* STATUS SWITCH BUTTON */
+.status-switch {
+    width: 36px; height: 36px; border-radius: 50%; border: 2px solid var(--accent);
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    transition: 0.3s; background: transparent; position: relative; overflow: hidden;
+}
+.status-switch.active { border-color: var(--success); background: rgba(76, 175, 80, 0.1); }
+.status-switch.error { border-color: var(--error); background: rgba(244, 67, 54, 0.1); }
+
+.status-icon { font-size: 16px; font-weight: 900; transition: 0.3s; }
+.status-switch.active .status-icon { color: var(--success); }
+.status-switch.error .status-icon { color: var(--error); }
+
 .clean-btn {
-    width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--accent);
-    background: transparent; color: var(--text); font-size: 10px; font-weight: 900; cursor: pointer; opacity: 0.5;
+    width: 100%; padding: 12px; border-radius: 12px; border: 1px solid var(--accent);
+    background: transparent; color: var(--text); font-size: 10px; font-weight: 900; cursor: pointer; opacity: 0.5; margin-top: 10px;
 }
 .clean-btn:hover { opacity: 1; }
