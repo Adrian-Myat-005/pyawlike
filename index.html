@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike Pro</title>
+    <title>PyawLike Robust Pro</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
@@ -11,7 +11,7 @@
     <script src="config.js"></script>
 </head>
 <body class="">
-    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.1);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.5;">Engine Initializing...</div>
+    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.1);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.5;">Initializing Pro Engine...</div>
     
     <div class="top-nav" id="menuBtn"><div class="nav-dot"></div></div>
     <div class="dropdown" id="menu">
@@ -36,7 +36,7 @@
         const textDisplay = document.getElementById('textDisplay');
         const masterAudio = new Audio();
         let isRec = false, isProcessing = false, curLang = 'en-US';
-        let currentTranscript = '', lastFinalTranscript = '';
+        let currentTranscript = '';
         let wakeLock = null;
 
         function log(msg) { logArea.innerText = msg; console.log(msg); }
@@ -50,7 +50,7 @@
             masterAudio.pause();
         }
 
-        // --- SPEECH ENGINE (RE-BUILT FROM COMMUNITY DOCS) ---
+        // --- SPEECH ENGINE (V6 ROBUST) ---
         let Speech = null;
         let recognition = null;
 
@@ -58,45 +58,57 @@
             Speech = (window.Capacitor && window.Capacitor.Plugins) ? window.Capacitor.Plugins.SpeechRecognition : null;
             
             if (Speech) {
-                log("Capacitor Mode Active");
-                // The community plugin recommends checking availability first
-                const available = await Speech.available();
-                if (!available.available) log("System Speech Unavailable");
+                try {
+                    const available = await Speech.available();
+                    if (available.available) {
+                        log("Engine Ready");
+                        await checkPermissions();
+                    } else {
+                        log("Device not supported");
+                    }
+                } catch (e) { log("Init Error"); }
             } else if ('webkitSpeechRecognition' in window) {
-                log("Browser Mode Active");
+                log("Web Mode");
                 recognition = new webkitSpeechRecognition();
                 recognition.continuous = true;
                 recognition.interimResults = true;
-                
                 recognition.onresult = (e) => {
-                    let interim = '';
-                    for (let i = e.resultIndex; i < e.results.length; ++i) {
-                        if (e.results[i].isFinal) lastFinalTranscript += e.results[i][0].transcript;
-                        else interim += e.results[i][0].transcript;
+                    let full = '';
+                    for (let i = 0; i < e.results.length; ++i) {
+                        full += e.results[i][0].transcript;
                     }
-                    currentTranscript = (lastFinalTranscript + interim).trim();
+                    currentTranscript = full.trim();
                     textDisplay.innerText = currentTranscript || "Listening...";
                 };
-                
-                recognition.onend = () => { if (isRec) recognition.start(); };
-                recognition.onerror = (e) => log("Web Error: " + e.error);
+                recognition.onend = () => { if (isRec) try { recognition.start(); } catch(e) {} };
             }
-            checkPermissions();
         }
 
         async function checkPermissions() {
-            if (Speech) {
-                const has = await Speech.hasPermission();
-                if (!has.permission) await Speech.requestPermission();
-                log("Permissions Checked");
-            }
+            if (!Speech) return;
+            try {
+                const status = await Speech.checkPermissions();
+                if (status.speechRecognition !== 'granted') {
+                    log("Requesting Access...");
+                    await Speech.requestPermissions();
+                }
+            } catch (e) { log("Permission Fail"); }
         }
 
         async function start(lang, side) {
             if (isRec || isProcessing) return;
+            
+            // Pro Safeguard: Check if already listening
+            if (Speech) {
+                const check = await Speech.isListening();
+                if (check.listening) {
+                    await Speech.stop();
+                    await new Promise(r => setTimeout(r, 100));
+                }
+            }
+
             isRec = true;
             currentTranscript = '';
-            lastFinalTranscript = '';
             curLang = lang;
 
             document.body.classList.add(side === 'left' ? 'active-left' : 'active-right');
@@ -104,9 +116,7 @@
             textDisplay.style.color = "var(--accent)";
 
             if (Speech) {
-                // Official recommendation: clean listeners before starting
                 Speech.removeAllListeners();
-                
                 Speech.addListener('partialResults', (data) => {
                     if (data.matches && data.matches.length > 0) {
                         currentTranscript = data.matches[0];
@@ -119,12 +129,12 @@
                         language: curLang,
                         partialResults: true,
                         popup: false,
-                        continuous: true // Crucial for long sentences
+                        continuous: true
                     });
-                } catch (e) { log("Start Fail: " + e.message); isRec = false; }
+                } catch (e) { log("Start Error"); isRec = false; }
             } else if (recognition) {
                 recognition.lang = curLang;
-                recognition.start();
+                try { recognition.start(); } catch(e) {}
             }
         }
 
@@ -136,26 +146,23 @@
             log("Processing...");
 
             if (Speech) {
-                await Speech.stop();
+                try { await Speech.stop(); } catch(e) {}
                 Speech.removeAllListeners();
             } else if (recognition) {
-                recognition.stop();
+                try { recognition.stop(); } catch(e) {}
             }
 
-            // Let buffers settle
             setTimeout(async () => {
-                if (currentTranscript || lastFinalTranscript) {
-                    const final = (lastFinalTranscript + " " + currentTranscript).trim();
+                if (currentTranscript) {
                     textDisplay.style.color = "var(--text)";
                     textDisplay.innerText = "...";
-                    await translate(final);
+                    await translate(currentTranscript);
                 } else {
                     forceResetUI();
                 }
-            }, 500);
+            }, 600);
         }
 
-        // --- TRANSLATION & TTS (HARDENED) ---
         async function translate(text) {
             const isMM = curLang.startsWith('my');
             const sl = isMM ? 'my' : 'en', tl = isMM ? 'en' : 'my';
@@ -188,21 +195,24 @@
                         await masterAudio.play();
                         success = true;
                     }
-                } catch (e) { log("Natural TTS Fail"); }
+                } catch (e) { log("Gemini Fail"); }
             }
 
             if (!success) {
+                if (!window.SpeechSynthesisUtterance) { isProcessing = false; return; }
                 const u = new SpeechSynthesisUtterance(text);
                 u.lang = (lang === 'my') ? 'my-MM' : 'en-US';
                 u.onend = () => { isProcessing = false; };
+                u.onerror = () => { isProcessing = false; };
                 window.speechSynthesis.speak(u);
             }
         }
 
-        // --- UI & LIFECYCLE ---
         function unlockAudio() {
             masterAudio.play().then(() => { masterAudio.pause(); }).catch(() => {});
-            if (window.speechSynthesis) window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+            if (window.speechSynthesis) {
+                try { window.speechSynthesis.speak(new SpeechSynthesisUtterance("")); } catch(e) {}
+            }
             window.removeEventListener('pointerdown', unlockAudio);
         }
         window.addEventListener('pointerdown', unlockAudio);
@@ -219,7 +229,7 @@
         document.getElementById('themeSw').addEventListener('change', () => document.body.classList.toggle('dark-mode'));
 
         document.addEventListener('deviceready', initSpeech, false);
-        setTimeout(() => { if (!Speech && !recognition) initSpeech(); }, 1500);
+        setTimeout(() => { if (!Speech && !recognition) initSpeech(); }, 2000);
     </script>
 </body>
 </html>
