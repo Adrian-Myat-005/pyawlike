@@ -3,13 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike Robust Pro</title>
+    <title>PyawLike Edge Pro</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <link rel="icon" href="data:,">
     <script src="config.js"></script>
+    <!-- Edge TTS Library -->
+    <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
     <style>
         :root { --circle-size: clamp(220px, 50vw, 300px); }
         body { background: var(--bg); transition: 0.3s; overflow: hidden; font-family: 'Inter', sans-serif; }
@@ -26,15 +28,14 @@
     </style>
 </head>
 <body class="">
-    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:100000;border-radius:5px;opacity:0.6;">Google Engine Active</div>
+    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:100000;border-radius:5px;opacity:0.6;">Edge Engine Ready</div>
     
     <div class="top-nav" id="menuBtn"><div class="nav-dot"></div></div>
     <div class="dropdown" id="menu">
         <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw"></div>
         <div class="menu-item">SHOW TEXT <input type="checkbox" id="textSw" checked></div>
-        <div class="menu-item">NATURAL VOICE <input type="checkbox" id="naturalSw" checked></div>
         <div class="menu-item">CONTINUOUS <input type="checkbox" id="contSw"></div>
-        <button onclick="testVoice()" style="background:var(--accent);color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:10px;cursor:pointer;font-size:12px;">TEST GOOGLE VOICE</button>
+        <button onclick="testVoice()" style="background:var(--accent);color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:10px;cursor:pointer;font-size:12px;">TEST EDGE VOICE</button>
         <button onclick="hardReset()" style="background:#ff4444;color:white;border:none;padding:12px;border-radius:12px;font-weight:800;width:100%;margin-top:15px;cursor:pointer;font-size:12px;">HARD RESET</button>
     </div>
 
@@ -82,18 +83,18 @@
                 recognition.interimResults = true;
                 recognition.onresult = (e) => {
                     let full = '';
-                    for (let i = 0; i < e.results.length; ++i) full += e.results[i][0].transcript;
+                    for (let i = e.resultIndex; i < e.results.length; ++i) full += e.results[i][0].transcript;
                     currentTranscript = full.trim();
                     textDisplay.innerText = currentTranscript || "Listening...";
                 };
                 recognition.onend = () => { if (isRec) try { recognition.start(); } catch(e) {} };
-                log("Google Voice Ready");
+                log("Edge Pro Ready");
             }
         }
 
         async function start(lang, side) {
             if (isRec || isProcessing) return;
-            // Prime audio system
+            // Prime audio
             masterAudio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
             masterAudio.play().catch(()=>{});
 
@@ -124,32 +125,41 @@
                         const result = data[0].map(s => s[0]).join('').trim();
                         textDisplay.innerText = result;
                         await speak(result, tl);
-                    } catch (e) { log("Error: " + e.message); hardReset(); }
+                    } catch (e) { log("Pipeline Fail"); hardReset(); }
                 } else { hardReset(); }
             }, 400);
         }
 
         async function speak(text, lang) {
             setUIState('SPEAKING');
-            const natural = document.getElementById('naturalSw').checked;
-            
-            if (natural) {
-                try {
-                    log("Google TTS...");
-                    const gLang = (lang === 'my' || lang === 'my-MM') ? 'my' : 'en';
-                    // Classic Google Translate TTS (The "Old Reliable")
-                    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${gLang}&client=tw-ob`;
-                    
-                    masterAudio.src = url;
-                    masterAudio.onended = () => finishTurn();
-                    masterAudio.onerror = () => fallbackSpeak(text, lang);
-                    await masterAudio.play();
-                    return;
-                } catch (e) {
-                    log("Google Fail -> System");
-                }
+            try {
+                log("Edge Neural Synthesis...");
+                const TTS = window.EdgeTTS?.EdgeTTS || window.EdgeTTS?.UniversalEdgeTTS || window.EdgeTTS;
+                if (!TTS) throw new Error("Edge Library Missing");
+                
+                const tts = new TTS();
+                // ONLY EDGE VOICES
+                const voice = (lang === 'my' || lang === 'my-MM') ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
+                
+                const audioData = await tts.synthesize(text, voice);
+                const blob = new Blob([audioData], { type: 'audio/mp3' });
+                const url = URL.createObjectURL(blob);
+                
+                masterAudio.src = url;
+                masterAudio.onended = () => { 
+                    URL.revokeObjectURL(url); 
+                    finishTurn(); 
+                };
+                masterAudio.onerror = () => { 
+                    URL.revokeObjectURL(url); 
+                    log("Audio Playback Error"); 
+                    hardReset(); 
+                };
+                await masterAudio.play();
+            } catch (e) {
+                log("Edge Fail: " + e.message);
+                hardReset();
             }
-            fallbackSpeak(text, lang);
         }
 
         function finishTurn() {
@@ -165,23 +175,14 @@
             }
         }
 
-        function fallbackSpeak(text, lang) {
-            log("System Voice");
-            const u = new SpeechSynthesisUtterance(text);
-            u.lang = (lang === 'my' || lang === 'my-MM') ? 'my-MM' : 'en-US';
-            u.onend = () => finishTurn();
-            window.speechSynthesis.speak(u);
-        }
-
         async function testVoice() {
-            log("Test Google TTS...");
-            await speak("မင်္ဂလာပါ၊ ဒါကတော့ Google ရဲ့ အသံစနစ် ဖြစ်ပါတယ်။", 'my');
+            log("Testing Edge...");
+            await speak("မင်္ဂလာပါ၊ အခု Edge အသံစနစ်ကို အသုံးပြုနေပါတယ်။", 'my');
         }
 
         function unlockAudio() {
             log("Audio System Live");
             masterAudio.play().then(() => { masterAudio.pause(); }).catch(() => {});
-            if (window.speechSynthesis) window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
             window.removeEventListener('pointerdown', unlockAudio);
         }
         window.addEventListener('pointerdown', unlockAudio);
