@@ -62,22 +62,27 @@ body.active-right .split-btn-container { animation: pulse 1.5s infinite; border-
     transform: translateX(-50%); text-align: center; width: 80vw; 
     pointer-events: none;
 }
-.transcription { font-size: 24px; font-weight: 700; opacity: 0.9; }
+/* SUBTLE OPACITY TEXT */
+.transcription { 
+    font-size: 24px; 
+    font-weight: 700; 
+    opacity: 0.4; 
+    transition: 0.3s;
+    letter-spacing: -0.5px;
+}
 
 /* WAVE ANIMATION */
 .wave-box { display: none; gap: 6px; justify-content: center; align-items: center; height: 40px; }
 .wave-bar { width: 4px; height: 100%; background: var(--accent); border-radius: 10px; animation: wave-pulse 1s infinite ease-in-out; }
 .wave-bar:nth-child(2) { animation-delay: 0.2s; }
 .wave-bar:nth-child(3) { animation-delay: 0.4s; }
-@keyframes wave-pulse { 0%, 100% { height: 10px; opacity: 0.3; } 50% { height: 40px; opacity: 1; } }
-
-.debug-line { font-size: 10px; opacity: 0.5; margin-top: 5px; font-weight: 900; letter-spacing: 1px; }
+@keyframes wave-pulse { 0%, 100% { height: 10px; opacity: 0.2; } 50% { height: 40px; opacity: 0.6; } }
 
 /* BOTTOM NAV */
 .bottom-nav { position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 30px; z-index: 10000; }
-.nav-dot { width: 10px; height: 10px; background: var(--text); border-radius: 50%; opacity: 0.3; cursor: pointer; }
-.fs-icon { width: 16px; height: 16px; opacity: 0.3; cursor: pointer; transition: 0.3s; fill: var(--text); }
-.nav-dot:hover, .fs-icon:hover { opacity: 1; }
+.nav-dot { width: 10px; height: 10px; background: var(--text); border-radius: 50%; opacity: 0.2; cursor: pointer; }
+.fs-icon { width: 16px; height: 16px; opacity: 0.2; cursor: pointer; transition: 0.3s; fill: var(--text); }
+.nav-dot:hover, .fs-icon:hover { opacity: 0.6; }
 
 .dropdown { 
     position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px); 
@@ -86,5 +91,5 @@ body.active-right .split-btn-container { animation: pulse 1.5s infinite; border-
     transition: 0.4s; z-index: 100000; 
 }
 .dropdown.open { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
-.menu-item { display: flex; justify-content: space-between; width: 200px; margin-bottom: 15px; font-size: 12px; font-weight: 800; opacity: 0.7; }
+.menu-item { display: flex; justify-content: space-between; width: 200px; margin-bottom: 15px; font-size: 12px; font-weight: 800; opacity: 0.6; }
 .menu-item:last-child { margin-bottom: 0; }
