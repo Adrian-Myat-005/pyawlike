@@ -3,102 +3,155 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PyawLike - Final</title>
+    <title>PyawLike Final</title>
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
 </head>
 <body class="dark-mode">
-    <div id="error-toast" style="position:fixed; bottom:80px; left:50%; transform:translateX(-50%); background:rgba(255,50,50,0.9); color:white; padding:12px 24px; border-radius:30px; font-size:14px; z-index:2000; display:none;"></div>
-    <div class="top-nav"><div class="nav-dot" id="navDot"></div><span class="perm-status" id="permStatus">OFF</span></div>
-    <div class="dropdown-menu" id="dropdownMenu">
-        <div class="menu-item"><span>DARK MODE</span><label class="switch small-switch"><input type="checkbox" id="themeSwitch" checked><span class="slider"></span></label></div>
-        <div class="menu-item"><span>SHOW TEXT</span><label class="switch small-switch"><input type="checkbox" id="showTextSwitch"><span class="slider"></span></label></div>
-        <div class="menu-item"><span>NATURAL VOICE</span><label class="switch small-switch"><input type="checkbox" id="naturalSwitch"><span class="slider"></span></label></div>
+    <div id="error" style="position:fixed;bottom:50px;left:50%;transform:translateX(-50%);background:red;color:white;padding:10px 20px;border-radius:20px;display:none;z-index:10000;font-size:12px;"></div>
+    
+    <div class="top-nav"><div class="nav-dot" id="menuBtn"></div></div>
+    <div class="dropdown" id="menu">
+        <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw" checked></div>
+        <div class="menu-item">SHOW TEXT <input type="checkbox" id="textSw" checked></div>
+        <div class="menu-item">NATURAL VOICE <input type="checkbox" id="naturalSw" checked></div>
     </div>
-    <div class="status-area">
-        <div class="horizontal-waves" id="hWaves"><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div></div>
-        <div class="text-display-area" id="transcription"></div>
-        <div class="processing-loader" id="pLoader"><div class="loader-dot"></div><div class="loader-dot"></div><div class="loader-dot"></div></div>
-    </div>
-    <div class="speaker-wrapper" id="speakerWrapper" style="z-index:999; touch-action:none;">
-        <div class="split-btn-container" id="mainCircle">
-            <button class="half-btn left" id="btnMM" data-lang="my-MM" data-side="left"><span class="btn-label">MM</span></button>
-            <button class="half-btn right" id="btnENG" data-lang="en-US" data-side="right"><span class="btn-label">ENG</span></button>
+
+    <div class="status-area"><div class="transcription" id="textDisplay">Ready</div></div>
+
+    <div class="speaker-wrapper">
+        <div class="split-btn-container">
+            <button class="half-btn" id="btnMM" data-lang="my-MM"><span class="btn-label">MM</span></button>
+            <button class="half-btn" id="btnENG" data-lang="en-US"><span class="btn-label">ENG</span></button>
         </div>
     </div>
+
     <script>
         const btnMM=document.getElementById('btnMM'), btnENG=document.getElementById('btnENG');
-        const hWaves=document.getElementById('hWaves'), pLoader=document.getElementById('pLoader'), transcription=document.getElementById('transcription');
-        const errorToast=document.getElementById('error-toast'), permStatus=document.getElementById('permStatus');
-        const showTextSwitch=document.getElementById('showTextSwitch'), themeSwitch=document.getElementById('themeSwitch'), naturalSwitch=document.getElementById('naturalSwitch');
-        const masterAudio=new Audio(); let isRecording=false, finalBuffer='', currentMicLang='en-US';
-        const NativeSpeech=window.Capacitor?Capacitor.Plugins.SpeechRecognition:null;
+        const textDisplay=document.getElementById('textDisplay'), menu=document.getElementById('menu');
+        const errToast=document.getElementById('error');
+        const nativeMic = window.Capacitor ? Capacitor.Plugins.SpeechRecognition : null;
+        const masterAudio = new Audio();
+        let isRec = false, finalBuffer = '';
 
-        async function checkPerms(){ if(NativeSpeech) { try{ const s=await NativeSpeech.requestPermissions(); updateSwitch(s.speechRecognition==='granted'||s.microphone==='granted'); }catch(e){} } }
-        
-        function attachBtn(btn){
-            btn.addEventListener('pointerdown', async(e)=>{
-                e.preventDefault(); if(isRecording){await stopRecording();return;}
+        // --- 1. RECORDING LOOP ---
+        function attach(btn, inputLang, targetLang, side) {
+            btn.addEventListener('pointerdown', async (e) => {
+                e.preventDefault(); 
+                if(isRec) { stop(); return; }
+                
+                document.body.classList.add(side === 'left' ? 'active-left' : 'active-right');
+                textDisplay.innerText = "Listening...";
+                
+                // Wake Audio Engine (Silence)
+                window.speechSynthesis.speak(new SpeechSynthesisUtterance("")); 
+                
+                isRec = true;
                 btn.setPointerCapture(e.pointerId);
-                const lang=btn.getAttribute('data-lang'), side=btn.getAttribute('data-side');
-                document.body.classList.add(side==='left'?'is-active-left':'is-active-right');
-                wakeUp(); currentMicLang=lang; updateUI('listening'); isRecording=true;
-                if(NativeSpeech){
-                    try{ await NativeSpeech.start({language:lang, maxResults:1, partialResults:true, popup:true});
-                        NativeSpeech.addListener('partialResults',(d)=>{if(d.matches&&d.matches.length>0){finalBuffer=d.matches[0];if(showTextSwitch.checked)updateDisp(finalBuffer);}});
-                    }catch(e){stopRecording();}
-                } else { setTimeout(()=>stopRecording(),2000); }
+
+                if(nativeMic) {
+                    try {
+                        // FORCE PERMISSIONS
+                        await nativeMic.requestPermissions(); 
+                        await nativeMic.start({ language: inputLang, maxResults: 1, popup: true });
+                        nativeMic.addListener('partialResults', (d) => {
+                            if(d.matches && d.matches.length > 0) {
+                                finalBuffer = d.matches[0];
+                                textDisplay.innerText = finalBuffer;
+                            }
+                        });
+                    } catch(e) { stop(); showErr("Mic Error: " + e.message); }
+                } else {
+                    // Laptop Simulation
+                    setTimeout(() => { finalBuffer = "Hello World"; stop(inputLang, targetLang); }, 1500);
+                }
             });
-            btn.addEventListener('pointerup', (e)=>{btn.releasePointerCapture(e.pointerId); stopRecording();});
-        }
-        
-        async function stopRecording(){
-            if(!isRecording)return;
-            document.body.classList.remove('is-active-left','is-active-right');
-            updateUI('processing'); isRecording=false;
-            if(NativeSpeech)try{await NativeSpeech.stop();NativeSpeech.removeAllListeners();}catch(e){}
-            setTimeout(()=>{if(finalBuffer)proc(finalBuffer);else reset();},500);
+
+            btn.addEventListener('pointerup', (e) => {
+                btn.releasePointerCapture(e.pointerId);
+                stop(inputLang, targetLang); 
+            });
         }
 
-        async function proc(text){
-            if(!text||!text.trim()){reset();return;}
-            const isMM=currentMicLang==='my-MM', sl=isMM?'my':'en', tl=isMM?'en':'my';
-            const c=localStorage.getItem(`p_${text}_${tl}`); if(c){updateDisp(c);await speak(c,tl);return;}
-            try{
-                const r=await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`);
-                const d=await r.json(); const t=d[0].map(s=>s[0]).join('').trim();
-                localStorage.setItem(`p_${text}_${tl}`,t); updateDisp(t); await speak(t,tl);
-            }catch(e){showErr("Net Error");reset();}
-        }
-
-        async function speak(text, lang){
-            if(naturalSwitch.checked){
-                try{
-                    const url = window.ENV?.SERVER_URL || 'https://pyawlike.vercel.app';
-                    const r=await fetch(`${url}/api/tts`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,lang})});
-                    const d=await r.json();
-                    if(d.audio){
-                        const b=new Blob([Uint8Array.from(atob(d.audio),c=>c.charCodeAt(0))],{type:'audio/wav'});
-                        masterAudio.src=URL.createObjectURL(b); masterAudio.play(); masterAudio.onended=reset; return;
-                    }
-                }catch(e){console.warn("Gemini Failed, Fallback");}
+        async function stop(inputLang, targetLang) {
+            if(!isRec) return;
+            isRec = false;
+            document.body.classList.remove('active-left', 'active-right');
+            
+            if(nativeMic) { try { await nativeMic.stop(); nativeMic.removeAllListeners(); } catch(e){} }
+            
+            // --- 2. TRANSLATE LOOP ---
+            if(finalBuffer && finalBuffer.trim().length > 0) {
+                textDisplay.innerText = "Translating...";
+                await processTranslation(finalBuffer, inputLang, targetLang);
+                finalBuffer = ""; // Reset
+            } else {
+                textDisplay.innerText = "Ready";
             }
-            try{if(typeof EdgeTTS!=='undefined'){const v=lang==='my'?'my-MM-NilarNeural':'en-US-AvaNeural';const t=new EdgeTTS.EdgeTTS();await t.speak({text:text,voice:v});setTimeout(reset,(text.length*100)+1500);return;}}catch(e){}
-            const u=new SpeechSynthesisUtterance(text); u.lang=lang==='my'?'my-MM':'en-US'; u.onend=reset; window.speechSynthesis.speak(u);
         }
 
-        function wakeUp(){const s=new SpeechSynthesisUtterance("");window.speechSynthesis.speak(s);}
-        function updateUI(s){pLoader.classList.toggle('active',s==='processing');if(s==='listening'){if(showTextSwitch.checked){hWaves.classList.remove('active');transcription.classList.add('active');transcription.innerHTML='Listening...';}else{transcription.classList.remove('active');hWaves.classList.add('active');}}else if(s==='ready'){hWaves.classList.remove('active');if(!showTextSwitch.checked)transcription.classList.remove('active');}}
-        function updateDisp(t){if(showTextSwitch.checked){transcription.classList.add('active');transcription.innerHTML=t;}}
-        function reset(){updateUI('ready');finalBuffer='';}
-        function showErr(m){errorToast.textContent=m;errorToast.style.display='block';setTimeout(()=>errorToast.style.display='none',3000);}
-        function updateSwitch(o){permStatus.textContent=o?'ON':'ERR';permStatus.classList.toggle('active',o);}
+        async function processTranslation(text, inputLang, targetLang) {
+            try {
+                const sl = inputLang.startsWith('my') ? 'my' : 'en';
+                const tl = targetLang.startsWith('my') ? 'my' : 'en';
+                
+                const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`);
+                const data = await res.json();
+                const translatedText = data[0].map(s => s[0]).join('').trim();
+                
+                textDisplay.innerText = translatedText;
+                // --- 3. SPEAK LOOP ---
+                await speak(translatedText, targetLang);
+                
+            } catch(e) { showErr("Trans Fail"); textDisplay.innerText="Error"; }
+        }
+
+        async function speak(text, lang) {
+            const useNatural = document.getElementById('naturalSw').checked;
+            
+            // A. GEMINI VOICE
+            if(useNatural) {
+                try {
+                    const url = window.ENV?.SERVER_URL || 'https://pyawlike.vercel.app';
+                    const res = await fetch(`${url}/api/tts`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ text, lang: lang.startsWith('my')?'my':'en' })
+                    });
+                    const data = await res.json();
+                    if(data.audio) {
+                        const b = new Blob([Uint8Array.from(atob(data.audio), c => c.charCodeAt(0))], {type:'audio/wav'});
+                        masterAudio.src = URL.createObjectURL(b);
+                        masterAudio.play();
+                        return;
+                    }
+                } catch(e) { console.warn("Gemini Failed, using Backup"); }
+            }
+
+            // B. EDGE TTS BACKUP
+            try {
+                if(typeof EdgeTTS !== 'undefined') {
+                    const voice = lang.startsWith('my') ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
+                    const tts = new EdgeTTS.EdgeTTS();
+                    await tts.speak({ text: text, voice: voice });
+                    return;
+                }
+            } catch(e) {}
+
+            // C. SYSTEM OFFLINE BACKUP
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = lang;
+            window.speechSynthesis.speak(u);
+        }
+
+        function showErr(m) { errToast.innerText=m; errToast.style.display='block'; setTimeout(()=>errToast.style.display='none',3000); }
+
+        attach(btnMM, 'my-MM', 'en-US', 'left');
+        attach(btnENG, 'en-US', 'my-MM', 'right');
         
-        attachBtn(btnMM); attachBtn(btnENG);
-        document.getElementById('navDot').addEventListener('click',()=>document.getElementById('dropdownMenu').classList.toggle('active'));
-        themeSwitch.addEventListener('change',(e)=>document.body.classList.toggle('dark-mode',e.target.checked));
-        (async()=>{await checkPerms();})();
+        document.getElementById('menuBtn').addEventListener('click', () => menu.classList.toggle('open'));
+        document.getElementById('themeSw').addEventListener('change', (e) => document.body.classList.toggle('dark-mode', e.target.checked));
     </script>
 </body>
 </html>

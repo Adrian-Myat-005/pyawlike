@@ -5,17 +5,17 @@ export default async function handler(req, res) {
     if (req.method === 'OPTIONS') return res.status(200).end();
 
     const { text, lang } = req.body;
-    // Vercel will look for this Key in its Settings
     const apiKey = process.env.GEMINI_API_KEY; 
 
     if (!apiKey) return res.status(500).json({ error: "Server missing API Key" });
 
     try {
+        // CALL GEMINI 2.0 FLASH
         const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-                contents: [{ parts: [{ text: `Speak naturally in ${lang==='my'?'Burmese':'English'}: ${text}` }] }],
+                contents: [{ parts: [{ text: `Speak naturally in ${lang==='my'?'Burmese':'English'}. Do not add commentary. Just speak: ${text}` }] }],
                 generationConfig: { responseMimeType: "audio/wav" } 
             })
         });
