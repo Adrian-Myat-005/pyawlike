@@ -3,13 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike</title>
+    <title>PyawLike Pro</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
 </head>
-<body class="">
+<body class="dark-mode">
+    <div id="toast" class="toast">Double-tap to connect</div>
     
     <div class="bottom-nav">
         <svg id="fsBtn" class="fs-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
@@ -18,48 +21,52 @@
 
     <div class="dropdown" id="menu">
         <input type="password" id="geminiKey" class="api-input" placeholder="GEMINI API KEY">
-        <div class="menu-item">
-            NATURAL MODE
-            <div id="statusBtn" class="status-switch">
-                <span id="statusIcon" class="status-icon">✕</span>
-            </div>
-        </div>
-        <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw"></div>
+        <div class="menu-item">NATURAL MODE <div id="statusBtn" class="status-switch"><span id="statusIcon" class="status-icon">✕</span></div></div>
+        <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw" checked></div>
         <div class="menu-item">SHOW TEXT <input type="checkbox" id="textSw" checked></div>
         <button class="clean-btn" onclick="clearVoiceCache()">CLEAN CACHE</button>
     </div>
 
     <div class="status-area">
-        <div class="transcription" id="textDisplay"></div>
-        <div class="wave-box" id="waveBox">
-            <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
-        </div>
+        <div class="transcription" id="textDisplay">Ready</div>
+        <div class="wave-box" id="waveBox"><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div></div>
     </div>
 
     <div class="speaker-wrapper">
-        <div class="split-btn-container">
+        <div id="mainCircle" class="split-btn-container locked">
             <button class="half-btn" id="btnMM"><span class="btn-label">MM</span></button>
             <button class="half-btn" id="btnENG"><span class="btn-label">ENG</span></button>
         </div>
     </div>
 
     <script>
-        // --- LOGGING ---
-        function log(msg) {
-            console.log(msg);
-        }
-
-        // --- SETUP ---
-        const btnMM=document.getElementById('btnMM'), btnENG=document.getElementById('btnENG');
-        const textDisplay=document.getElementById('textDisplay'), menu=document.getElementById('menu');
+        const btnMM=document.getElementById('btnMM'), btnENG=document.getElementById('btnENG'), mainCircle=document.getElementById('mainCircle');
+        const textDisplay=document.getElementById('textDisplay'), menu=document.getElementById('menu'), toast=document.getElementById('toast');
         const textSw=document.getElementById('textSw'), waveBox=document.getElementById('waveBox');
         const geminiInput=document.getElementById('geminiKey'), statusBtn=document.getElementById('statusBtn'), statusIcon=document.getElementById('statusIcon');
         const audioObj = new Audio();
         
-        let isRecording = false, recognition = null;
+        let isRecording = false, recognition = null, isUnlocked = false, lastTap = 0;
         let naturalMode = localStorage.getItem('natural_mode') === 'true';
 
-        // --- STATUS & UI ---
+        function showToast(msg) { toast.innerText = msg; toast.style.display = 'block'; setTimeout(() => toast.style.display = 'none', 2000); }
+
+        async function wakeUpServer() {
+            textDisplay.innerText = "Connecting...";
+            const serverUrl = window.ENV?.SERVER_URL || "https://pyawlike.vercel.app";
+            try {
+                // Ping Vercel API
+                await fetch(`${serverUrl}/api/edge`, { method: 'OPTIONS' });
+                isUnlocked = true;
+                mainCircle.classList.remove('locked');
+                textDisplay.innerText = "Connected";
+                setTimeout(() => { textDisplay.innerText = ""; }, 1000);
+            } catch (e) {
+                textDisplay.innerText = "Server Error";
+                setTimeout(() => { textDisplay.innerText = "Ready"; }, 2000);
+            }
+        }
+
         function updateStatusUI() {
             const hasKey = geminiInput.value.trim().length > 5;
             if (naturalMode) {
@@ -71,27 +78,50 @@
         geminiInput.addEventListener('input', () => { localStorage.setItem('gemini_key', geminiInput.value); updateStatusUI(); });
         geminiInput.value = localStorage.getItem('gemini_key') || ''; updateStatusUI();
 
-        function updateUI(recording) {
-            const showText = textSw.checked;
-            if (recording) {
-                textDisplay.style.display = showText ? 'block' : 'none';
-                waveBox.style.display = showText ? 'none' : 'flex';
+        function initMic(lang) {
+            const Speech = window.webkitSpeechRecognition || window.speechRecognition;
+            if (!Speech) return null;
+            const rec = new Speech();
+            rec.lang = lang; rec.continuous = false; rec.interimResults = true;
+            rec.onstart = () => {
+                isRecording = true;
+                document.body.classList.add(lang === 'my-MM' ? 'active-left' : 'active-right');
                 textDisplay.innerText = "";
-            } else {
-                textDisplay.style.display = showText ? 'block' : 'none';
+                if (!textSw.checked) waveBox.style.display = 'flex';
+            };
+            rec.onresult = (ev) => {
+                let txt = '';
+                for (let i = ev.resultIndex; i < ev.results.length; ++i) txt += ev.results[i][0].transcript;
+                if (textSw.checked) textDisplay.innerText = txt;
+            };
+            rec.onend = () => {
+                isRecording = false;
+                document.body.classList.remove('active-left', 'active-right');
                 waveBox.style.display = 'none';
-            }
+                const finalTxt = textDisplay.innerText;
+                if (finalTxt && finalTxt.trim().length > 0) processJob(finalTxt, lang);
+                else textDisplay.innerText = "";
+            };
+            return rec;
         }
 
-        // --- PLAY OUTPUT ---
+        async function processJob(text, inputLang) {
+            const isMM = inputLang === 'my-MM';
+            const sl = isMM ? 'my' : 'en', tl = isMM ? 'en' : 'my';
+            try {
+                const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`);
+                const data = await res.json();
+                const result = data[0].map(s => s[0]).join('').trim();
+                if (textSw.checked) textDisplay.innerText = result;
+                playOutput(result, tl);
+            } catch (e) { console.error("Trans Fail"); }
+        }
+
         async function playOutput(text, lang) {
             const isBurmese = (lang === 'my' || lang === 'my-MM');
             const hasKey = geminiInput.value.trim().length > 5;
-
-            // 1. GEMINI MODE
             if (naturalMode && isBurmese && hasKey) {
                 try {
-                    log("Calling Gemini...");
                     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiInput.value}`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -105,72 +135,40 @@
                         const blob = new Blob([Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0))], {type:'audio/wav'});
                         audioObj.src = URL.createObjectURL(blob); await audioObj.play(); return;
                     }
-                } catch(e) { log("Gemini Error: " + e.message); }
+                } catch(e) { console.log("Gemini Fail"); }
             }
-
-            // 2. EDGE SERVER PROXY
             try {
-                const voice = isBurmese ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
                 const serverUrl = window.ENV?.SERVER_URL || "https://pyawlike.vercel.app";
-                const target = `${serverUrl}/api/edge`;
-                
-                log(`Calling Proxy: ${target}`);
-                
-                const res = await fetch(target, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text, voice })
-                });
+                const voice = isBurmese ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
+                const res = await fetch(`${serverUrl}/api/edge`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice }) });
+                if (res.ok) { audioObj.src = URL.createObjectURL(await res.blob()); await audioObj.play(); return; }
+            } catch (e) {}
+            const u = new SpeechSynthesisUtterance(text); u.lang = isBurmese ? 'my-MM' : 'en-US'; window.speechSynthesis.speak(u);
+        }
 
-                if (res.ok) {
-                    const blob = await res.blob();
-                    audioObj.src = URL.createObjectURL(blob);
-                    await audioObj.play();
+        function handlePointer(btn, lang, side) {
+            btn.addEventListener('pointerdown', async (e) => {
+                e.preventDefault();
+                if (!isUnlocked) {
+                    const now = Date.now();
+                    if (now - lastTap < 300) { wakeUpServer(); } 
+                    else { showToast("Double-tap to connect"); }
+                    lastTap = now;
                     return;
                 }
-            } catch (e) { log("Proxy Network Fail: " + e.message); }
-
-            // 3. SYSTEM FALLBACK
-            log("Fallback to System Voice");
-            const u = new SpeechSynthesisUtterance(text);
-            u.lang = isBurmese ? 'my-MM' : 'en-US';
-            window.speechSynthesis.speak(u);
+                recognition = initMic(lang);
+                if (recognition) recognition.start();
+            });
+            btn.addEventListener('pointerup', () => {
+                if (isUnlocked && isRecording && recognition) recognition.stop();
+            });
         }
 
-        // --- MIC ---
-        function initMic(lang) {
-            const Speech = window.webkitSpeechRecognition || window.speechRecognition;
-            if (!Speech) return null;
-            const rec = new Speech();
-            rec.lang = lang; rec.continuous = false; rec.interimResults = true;
-            rec.onstart = () => { isRecording = true; document.body.classList.add(lang==='my-MM'?'active-left':'active-right'); updateUI(true); };
-            rec.onresult = (ev) => { let t=''; for(let i=ev.resultIndex;i<ev.results.length;++i)t+=ev.results[i][0].transcript; textDisplay.innerText=t; };
-            rec.onend = () => {
-                isRecording = false; document.body.classList.remove('active-left','active-right'); updateUI(false);
-                const txt = textDisplay.innerText;
-                if(txt) processJob(txt, lang);
-            };
-            return rec;
-        }
-
-        async function processJob(text, inputLang) {
-            const isMM = inputLang === 'my-MM';
-            const sl = isMM ? 'my' : 'en', tl = isMM ? 'en' : 'my';
-            try {
-                const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`);
-                const data = await res.json();
-                const result = data[0].map(s => s[0]).join('').trim();
-                textDisplay.innerText = result;
-                playOutput(result, tl);
-            } catch (e) { log("Trans Error"); }
-        }
-
-        btnMM.addEventListener('click', () => { if(!isRecording) { recognition = initMic('my-MM'); recognition?.start(); } else recognition?.stop(); });
-        btnENG.addEventListener('click', () => { if(!isRecording) { recognition = initMic('en-US'); recognition?.start(); } else recognition?.stop(); });
+        handlePointer(btnMM, 'my-MM', 'left');
+        handlePointer(btnENG', 'en-US', 'right');
         document.getElementById('menuBtn').addEventListener('click', () => menu.classList.toggle('open'));
         document.getElementById('themeSw').addEventListener('change', (e) => document.body.classList.toggle('dark-mode', e.target.checked));
         document.getElementById('fsBtn').addEventListener('click', () => { !document.fullscreenElement ? document.documentElement.requestFullscreen() : document.exitFullscreen(); });
-        textSw.addEventListener('change', () => updateUI(isRecording));
     </script>
 </body>
 </html>
