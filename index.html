@@ -110,6 +110,10 @@
         document.getElementById('menuBtn').addEventListener('click', () => menu.classList.toggle('open'));
 
         function initMic(lang) {
+            // Wake Up Server instantly
+            const serverUrl = window.ENV?.SERVER_URL || "https://pyawlike.vercel.app";
+            fetch(`${serverUrl}/api/edge`, { method: 'OPTIONS' }).catch(()=>{});
+
             const Speech = window.webkitSpeechRecognition || window.speechRecognition;
             if (!Speech) return null;
             const rec = new Speech();
