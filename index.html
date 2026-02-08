@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike Robust Pro</title>
+    <title>PyawLike Universal Pro</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <link rel="icon" href="data:,"> <!-- Stop Favicon 404 -->
     <script src="config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
     <style>
@@ -27,14 +28,16 @@
             display: flex;
             flex-direction: column;
             justify-content: center;
+            left: 50%;
+            transform: translateX(-50%);
         }
-        .transcription { font-size: clamp(18px, 5vw, 24px); font-weight: 700; line-height: 1.3; color: var(--text); }
-        .status-badge { font-size: 10px; font-weight: 900; letter-spacing: 2px; margin-bottom: 8px; color: var(--accent); opacity: 0.8; }
+        .transcription { font-size: clamp(18px, 5vw, 24px); font-weight: 700; line-height: 1.3; color: var(--text); text-align: center; }
+        .status-badge { font-size: 10px; font-weight: 900; letter-spacing: 2px; margin-bottom: 8px; color: var(--accent); opacity: 0.8; text-align: center; }
         .active-left .status-area, .active-right .status-area { transform: scale(1.05) translateX(-50%); border: 2px solid var(--accent); }
     </style>
 </head>
 <body class="">
-    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.6;">System Optimized</div>
+    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.6;">System Ready</div>
     
     <div class="top-nav" id="menuBtn"><div class="nav-dot"></div></div>
     <div class="dropdown" id="menu">
@@ -68,6 +71,7 @@
         let curLang = 'en-US', currentTranscript = '';
         
         const { Haptics, StatusBar, App, SpeechRecognition } = (window.Capacitor && window.Capacitor.Plugins) ? window.Capacitor.Plugins : {};
+        let recognition = null; // WebSpeech fallback
 
         function log(msg) { logArea.innerText = msg; }
         function setUIState(state) { stateBadge.innerText = state; }
@@ -82,26 +86,41 @@
             if (SpeechRecognition) {
                 try { await SpeechRecognition.stop(); } catch(e) {}
                 SpeechRecognition.removeAllListeners();
+            } else if (recognition) {
+                try { recognition.stop(); } catch(e) {}
             }
-            
-            // Auto-restart for Speech-to-Speech loop
             const isCont = document.getElementById('contSw').checked;
-            if (isCont) {
-                setTimeout(() => start(curLang, curLang === 'my-MM' ? 'left' : 'right'), 500);
-            }
+            if (isCont) setTimeout(() => start(curLang, curLang === 'my-MM' ? 'left' : 'right'), 600);
         }
 
-        async function initAndroid() {
+        async function initSystem() {
+            log("Initializing Engine...");
             if (StatusBar) {
                 StatusBar.setOverlaysWebView({ overlay: true });
                 StatusBar.setStyle({ style: 'LIGHT' });
             }
+            
             if (SpeechRecognition) {
                 try {
                     const avail = await SpeechRecognition.available();
-                    if (avail.available) await SpeechRecognition.requestPermissions();
-                    log("Android System Ready");
+                    if (avail.available) {
+                        await SpeechRecognition.requestPermissions();
+                        log("Android Engine Active");
+                    }
                 } catch (e) { log("Mic Not Ready"); }
+            } else if ('webkitSpeechRecognition' in window) {
+                log("Browser Engine Active");
+                const SpeechReq = window.webkitSpeechRecognition || window.speechRecognition;
+                recognition = new SpeechReq();
+                recognition.continuous = true;
+                recognition.interimResults = true;
+                recognition.onresult = (e) => {
+                    let full = '';
+                    for (let i = 0; i < e.results.length; ++i) full += e.results[i][0].transcript;
+                    currentTranscript = full.trim();
+                    textDisplay.innerText = currentTranscript || "Listening...";
+                };
+                recognition.onend = () => { if (isRec) try { recognition.start(); } catch(e) {} };
             }
         }
 
@@ -125,6 +144,9 @@
                 try {
                     await SpeechRecognition.start({ language: curLang, partialResults: true, popup: false, continuous: true });
                 } catch (e) { isRec = false; }
+            } else if (recognition) {
+                recognition.lang = curLang;
+                try { recognition.start(); } catch(e) {}
             }
         }
 
@@ -136,6 +158,7 @@
             if (Haptics) Haptics.impact({ style: 'LIGHT' });
 
             if (SpeechRecognition) try { await SpeechRecognition.stop(); } catch(e) {}
+            else if (recognition) try { recognition.stop(); } catch(e) {}
 
             setTimeout(async () => {
                 if (currentTranscript) await processPipeline(currentTranscript);
@@ -161,20 +184,17 @@
             
             if (natural) {
                 try {
-                    log("Edge Neural Synthetic...");
                     const tts = new EdgeTTS.EdgeTTS();
-                    // Using Edge TTS directly - DOES NOT NEED GEMINI API KEY
                     const voice = (lang === 'my') ? 'my-MM-ThihaNeural' : 'en-US-AvaMultilingualNeural';
                     await tts.setVoice(voice);
                     const audioData = await tts.synthesize(text);
                     const blob = new Blob([audioData], { type: 'audio/mp3' });
                     const url = URL.createObjectURL(blob);
-                    
                     masterAudio.src = url;
                     masterAudio.onended = () => { URL.revokeObjectURL(url); hardReset(); };
                     await masterAudio.play();
                     return;
-                } catch (e) { log("Edge Fail -> System"); }
+                } catch (e) { log("Edge Fail"); }
             }
             
             window.speechSynthesis.cancel();
@@ -185,9 +205,8 @@
         }
 
         async function testVoice() {
-            log("Test Start...");
-            await speak("Voice system check complete.", 'en-US');
-            log("Test OK");
+            log("Testing Voice...");
+            await speak("System is ready on your laptop.", 'en-US');
         }
 
         function unlockAudio() {
@@ -206,7 +225,9 @@
         attach('btnMM', 'my-MM', 'left');
         attach('btnENG', 'en-US', 'right');
         document.getElementById('menuBtn').addEventListener('click', () => document.getElementById('menu').classList.toggle('open'));
-        document.addEventListener('deviceready', initAndroid, false);
+        
+        document.addEventListener('deviceready', initSystem, false);
+        setTimeout(() => { if (!SpeechRecognition && !recognition) initSystem(); }, 1500);
     </script>
 </body>
 </html>
