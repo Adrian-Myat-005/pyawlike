@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "start": "npx serve .",
-    "build": "echo \"window.ENV = { GEMINI_API_KEY: '${GEMINI_API_KEY:-REPLACE_ME}' };\" > config.js"
+    "build": "echo \"Build Complete\""
   },
   "dependencies": {
     "@capacitor/android": "6.0.0",
