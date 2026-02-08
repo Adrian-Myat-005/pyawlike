@@ -9,7 +9,7 @@
     <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
 </head>
 <body class="dark-mode">
-    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.5);color:#0f0;font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.5;">Walkie-Talkie Mode Ready</div>
+    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.5);color:#0f0;font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.5;">Walkie-Talkie Sync Fix</div>
     
     <div class="top-nav"><div class="nav-dot" id="menuBtn"></div></div>
     <div class="dropdown" id="menu">
@@ -42,8 +42,8 @@
         async function checkPermissions() {
             if (Speech) {
                 try {
-                    const status = await Speech.requestPermissions();
-                    log("Mic Permissions: " + status.speechRecognition);
+                    await Speech.requestPermissions();
+                    log("Mic Ready");
                 } catch (e) { log("Mic Access Denied"); }
             }
         }
@@ -56,34 +56,27 @@
             
             document.body.classList.add(side === 'left' ? 'active-left' : 'active-right');
             textDisplay.innerText = "Listening...";
-            log("Mic Opening: " + lang);
+            textDisplay.style.color = "var(--text)";
+            log("Mic Opening...");
 
             if (Speech) {
                 try {
-                    // Pre-add listeners before starting
                     Speech.removeAllListeners(); 
                     
                     Speech.addListener('partialResults', (data) => {
-                        log("Got Voice Data...");
                         if (data.matches && data.matches.length > 0) {
                             finalBuffer = data.matches[0];
-                            textDisplay.innerText = finalBuffer;
+                            // FORCE UI UPDATE
+                            requestAnimationFrame(() => {
+                                textDisplay.innerText = finalBuffer;
+                                // Subtle color change to indicate live data
+                                textDisplay.style.color = "#4a90e2"; 
+                            });
                         }
                     });
 
-                    Speech.addListener('error', (err) => {
-                        log("Mic Error: " + err.message);
-                    });
-
-                    // POPUP: FALSE might fail on some devices for specific languages.
-                    // We try to start it.
-                    await Speech.start({ 
-                        language: lang, 
-                        partialResults: true, 
-                        popup: false 
-                    });
-                    
-                    log("Mic Live & Recording");
+                    await Speech.start({ language: lang, partialResults: true, popup: false });
+                    log("Got Voice Data...");
                 } catch (e) { 
                     log("Start Fail: " + e.message);
                     stopRecording();
@@ -100,26 +93,23 @@
             if (!isRec) return;
             isRec = false;
             document.body.classList.remove('active-left', 'active-right');
-            log("Mic Closing...");
+            log("Processing...");
             
             if (Speech) {
-                try { 
-                    await Speech.stop(); 
-                    // Don't remove all listeners immediately, wait for final results if any
-                } catch (e) { log("Stop Fail: " + e.message); }
+                try { await Speech.stop(); } catch (e) {}
             }
 
             setTimeout(async () => {
                 if (finalBuffer) {
+                    textDisplay.style.color = "var(--text)";
                     textDisplay.innerText = "TRANSLATING...";
                     await translate(finalBuffer);
                 } else {
                     textDisplay.innerText = "READY";
-                    log("No speech detected");
+                    log("No Speech");
                 }
-                // Cleanup listeners after processing
                 if(Speech) Speech.removeAllListeners();
-            }, 500);
+            }, 400);
         }
 
         async function translate(text) {
@@ -132,7 +122,7 @@
                 textDisplay.innerText = translated;
                 await speak(translated, tl);
             } catch (e) { 
-                log("Translation Error"); 
+                log("Trans Error"); 
                 textDisplay.innerText = "ERROR";
             }
         }
@@ -153,7 +143,7 @@
                         masterAudio.play();
                         return;
                     }
-                } catch (e) { log("Natural Voice Fail"); }
+                } catch (e) {}
             }
             try {
                 if (typeof EdgeTTS !== 'undefined') {
@@ -170,16 +160,8 @@
 
         function attach(id, lang, side) {
             const btn = document.getElementById(id);
-            btn.addEventListener('pointerdown', (e) => { 
-                e.preventDefault(); 
-                btn.setPointerCapture(e.pointerId); 
-                start(lang, side); 
-            });
-            btn.addEventListener('pointerup', (e) => { 
-                e.preventDefault(); 
-                btn.releasePointerCapture(e.pointerId); 
-                stopRecording(); 
-            });
+            btn.addEventListener('pointerdown', (e) => { e.preventDefault(); btn.setPointerCapture(e.pointerId); start(lang, side); });
+            btn.addEventListener('pointerup', (e) => { e.preventDefault(); btn.releasePointerCapture(e.pointerId); stopRecording(); });
         }
 
         attach('btnMM', 'my-MM', 'left');
