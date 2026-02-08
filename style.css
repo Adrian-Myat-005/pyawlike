@@ -36,11 +36,12 @@ body {
 .split-btn-container { 
     width: 100%; height: 100%; 
     display: flex; border-radius: 50%; 
-    background: var(--btn-white); 
-    box-shadow: 18px 18px 40px var(--shadow-dark), -18px -18px 40px var(--shadow-light), inset 2px 2px 4px var(--shadow-light), inset -2px -2px 4px var(--shadow-dark); 
+    background: linear-gradient(145deg, var(--btn-white), #f0f0f0); 
+    box-shadow: 20px 20px 45px var(--shadow-dark), -20px -20px 45px var(--shadow-light), inset 3px 3px 6px var(--shadow-light), inset -3px -3px 6px var(--shadow-dark); 
     transition: 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); 
     overflow: hidden;
     position: relative;
+    border: 1px solid rgba(0,0,0,0.05);
 }
 
 .half-btn { 

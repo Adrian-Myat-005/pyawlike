@@ -51,8 +51,13 @@ module.exports = async (req, res) => {
                 const requestId = uuidv4().replace(/-/g, '');
                 ws.send(`X-Timestamp:${new Date().toString()}\r\nContent-Type:application/json; charset=utf-8\r\nPath:speech.config\r\n\r\n` +
                     JSON.stringify({context:{synthesis:{audio:{metadataoptions:{sentenceBoundaryEnabled:"false",wordBoundaryEnabled:"false"},outputFormat:"audio-24khz-48kbitrate-mono-mp3"}}}}));
+                // Text Message with Prosody for faster flow
                 ws.send(`X-RequestId:${requestId}\r\nContent-Type:application/ssml+xml\r\nPath:ssml\r\n\r\n` +
-                    `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'><voice name='${voice}'>${text}</voice></speak>`);
+                    `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'>
+                        <voice name='${voice}'>
+                            <prosody rate='+10%' pitch='+0Hz'>${text}</prosody>
+                        </voice>
+                    </speak>`);
             });
 
             ws.on('message', (data, isBinary) => {
