@@ -3,18 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike Debug</title>
+    <title>PyawLike</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
 </head>
-<body class="dark-mode">
+<body class="">
     
-    <div id="debugBar" style="position:fixed; top:0; left:0; right:0; background:rgba(255,0,0,0.8); color:white; font-size:10px; padding:5px; z-index:99999; text-align:center; display:none;">
-        Debug Info...
-    </div>
-
     <div class="bottom-nav">
         <svg id="fsBtn" class="fs-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
         <div class="nav-dot" id="menuBtn"></div>
@@ -28,13 +24,13 @@
                 <span id="statusIcon" class="status-icon">✕</span>
             </div>
         </div>
-        <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw" checked></div>
+        <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw"></div>
         <div class="menu-item">SHOW TEXT <input type="checkbox" id="textSw" checked></div>
         <button class="clean-btn" onclick="clearVoiceCache()">CLEAN CACHE</button>
     </div>
 
     <div class="status-area">
-        <div class="transcription" id="textDisplay">Ready</div>
+        <div class="transcription" id="textDisplay"></div>
         <div class="wave-box" id="waveBox">
             <div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div>
         </div>
@@ -50,11 +46,7 @@
     <script>
         // --- LOGGING ---
         function log(msg) {
-            const dbg = document.getElementById('debugBar');
-            dbg.style.display = 'block';
-            dbg.innerText = msg;
             console.log(msg);
-            setTimeout(() => { dbg.style.display='none'; }, 5000);
         }
 
         // --- SETUP ---
@@ -84,7 +76,7 @@
             if (recording) {
                 textDisplay.style.display = showText ? 'block' : 'none';
                 waveBox.style.display = showText ? 'none' : 'flex';
-                textDisplay.innerText = "Listening...";
+                textDisplay.innerText = "";
             } else {
                 textDisplay.style.display = showText ? 'block' : 'none';
                 waveBox.style.display = 'none';
@@ -119,7 +111,6 @@
             // 2. EDGE SERVER PROXY
             try {
                 const voice = isBurmese ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
-                // CRITICAL: Ensure we use the correct Server URL
                 const serverUrl = window.ENV?.SERVER_URL || "https://pyawlike.vercel.app";
                 const target = `${serverUrl}/api/edge`;
                 
@@ -136,9 +127,6 @@
                     audioObj.src = URL.createObjectURL(blob);
                     await audioObj.play();
                     return;
-                } else {
-                    const errText = await res.text();
-                    log(`Proxy Error: ${res.status} ${errText}`);
                 }
             } catch (e) { log("Proxy Network Fail: " + e.message); }
 
@@ -152,7 +140,7 @@
         // --- MIC ---
         function initMic(lang) {
             const Speech = window.webkitSpeechRecognition || window.speechRecognition;
-            if (!Speech) { alert("Mic not supported"); return null; }
+            if (!Speech) return null;
             const rec = new Speech();
             rec.lang = lang; rec.continuous = false; rec.interimResults = true;
             rec.onstart = () => { isRecording = true; document.body.classList.add(lang==='my-MM'?'active-left':'active-right'); updateUI(true); };
@@ -160,7 +148,7 @@
             rec.onend = () => {
                 isRecording = false; document.body.classList.remove('active-left','active-right'); updateUI(false);
                 const txt = textDisplay.innerText;
-                if(txt && txt!=='Listening...') processJob(txt, lang);
+                if(txt) processJob(txt, lang);
             };
             return rec;
         }
@@ -174,7 +162,7 @@
                 const result = data[0].map(s => s[0]).join('').trim();
                 textDisplay.innerText = result;
                 playOutput(result, tl);
-            } catch (e) { textDisplay.innerText = "Trans Error"; }
+            } catch (e) { log("Trans Error"); }
         }
 
         btnMM.addEventListener('click', () => { if(!isRecording) { recognition = initMic('my-MM'); recognition?.start(); } else recognition?.stop(); });
