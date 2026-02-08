@@ -188,8 +188,13 @@
                     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiInput.value}`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                            contents: [{ parts: [{ text: `Speak naturally in Burmese. No commentary. Just speak: ${text}` }] }],
-                            generationConfig: { responseMimeType: "audio/wav" }
+                            contents: [{ 
+                                role: "user",
+                                parts: [{ text: `You are a native Burmese speaker. Speak the following text with perfect natural fluency, native intonation, and human-like emotion. Do not sound robotic. Only provide the audio output for this exact text: ${text}` }] 
+                            }],
+                            generationConfig: { 
+                                responseMimeType: "audio/wav"
+                            }
                         })
                     });
                     const data = await res.json();
