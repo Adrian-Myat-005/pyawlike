@@ -3,24 +3,58 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike Gold</title>
+    <title>PyawLike Fast-Speech</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="config.js"></script>
-    <!-- Golden Standard TTS Engine -->
     <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
     <style>
-        :root { --circle-size: clamp(220px, 55vw, 320px); }
+        :root { --circle-size: clamp(220px, 55vw, 300px); }
         .speaker-wrapper { width: var(--circle-size); height: var(--circle-size); }
-        .transcription { font-size: clamp(20px, 5vw, 28px); padding: 0 25px; min-height: 60px; }
-        .reset-btn { background: #ff4444; color: white; border: none; padding: 12px; border-radius: 12px; font-weight: 800; width: 100%; margin-top: 15px; cursor: pointer; font-size: 12px; }
-        .status-badge { font-size: 10px; font-weight: 900; letter-spacing: 1px; margin-bottom: 10px; opacity: 0.5; }
+        
+        /* High-Contrast Live Bubble */
+        .status-area {
+            position: absolute;
+            bottom: 115%;
+            width: 90vw;
+            max-width: 450px;
+            background: var(--btn-white);
+            padding: 25px;
+            border-radius: 30px;
+            box-shadow: 10px 10px 30px var(--shadow-dark), -10px -10px 30px var(--shadow-light);
+            transition: 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            min-height: 80px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        
+        .transcription { 
+            font-size: clamp(18px, 5vw, 24px); 
+            font-weight: 700;
+            line-height: 1.3;
+            color: var(--text);
+        }
+        
+        .status-badge { 
+            font-size: 10px; 
+            font-weight: 900; 
+            letter-spacing: 2px; 
+            margin-bottom: 8px; 
+            color: var(--accent);
+            opacity: 0.8;
+        }
+
+        .active-left .status-area, .active-right .status-area {
+            transform: scale(1.05) translateX(-50%);
+            border: 2px solid var(--accent);
+        }
     </style>
 </head>
 <body class="">
-    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.6;">System Initializing...</div>
+    <div id="debug-log" style="position:fixed;top:10px;left:10px;right:10px;max-height:40px;background:rgba(0,0,0,0.05);color:var(--text);font-family:monospace;font-size:10px;padding:5px;overflow:hidden;z-index:10000;border-radius:5px;pointer-events:none;opacity:0.6;">Turbo Mode Active</div>
     
     <div class="top-nav" id="menuBtn"><div class="nav-dot"></div></div>
     <div class="dropdown" id="menu">
@@ -32,7 +66,7 @@
 
     <div class="status-area">
         <div class="status-badge" id="stateBadge">READY</div>
-        <div class="transcription" id="textDisplay">HOLD TO SPEAK</div>
+        <div class="transcription" id="textDisplay">READY</div>
     </div>
 
     <div class="speaker-wrapper">
@@ -50,17 +84,12 @@
         
         let isRec = false, isProcessing = false;
         let curLang = 'en-US', currentTranscript = '';
-        let wakeLock = null;
+        let Speech = null;
 
-        function log(msg) { logArea.innerText = msg; console.log(msg); }
-        function setUIState(state) {
-            stateBadge.innerText = state;
-            if (state === 'LISTENING') textDisplay.style.color = "var(--accent)";
-            else if (state === 'READY') textDisplay.style.color = "var(--text)";
-        }
+        function log(msg) { logArea.innerText = msg; }
+        function setUIState(state) { stateBadge.innerText = state; }
 
         async function hardReset() {
-            log("Hard Resetting...");
             isRec = false; isProcessing = false;
             document.body.classList.remove('active-left', 'active-right');
             setUIState('READY');
@@ -73,56 +102,26 @@
             }
         }
 
-        // --- PHASE 1: MICROPHONE (GOLDEN STANDARD) ---
-        let Speech = null;
-        let recognition = null;
-
         async function initSpeech() {
             Speech = (window.Capacitor && window.Capacitor.Plugins) ? window.Capacitor.Plugins.SpeechRecognition : null;
-            
             if (Speech) {
                 try {
                     const avail = await Speech.available();
-                    if (avail.available) {
-                        log("Native Mic Engine Loaded");
-                        const perm = await Speech.checkPermissions();
-                        if (perm.speechRecognition !== 'granted') await Speech.requestPermissions();
-                    }
-                } catch (e) { log("Mic Init Fail"); }
-            } else if ('webkitSpeechRecognition' in window) {
-                log("Web Mic Engine Loaded");
-                recognition = new webkitSpeechRecognition();
-                recognition.continuous = true;
-                recognition.interimResults = true;
-                recognition.onresult = (e) => {
-                    let full = '';
-                    for (let i = 0; i < e.results.length; ++i) full += e.results[i][0].transcript;
-                    currentTranscript = full.trim();
-                    textDisplay.innerText = currentTranscript || "Listening...";
-                };
-                recognition.onend = () => { if (isRec) try { recognition.start(); } catch(e) {} };
+                    if (avail.available) await Speech.requestPermissions();
+                } catch (e) {}
             }
         }
 
         async function start(lang, side) {
             if (isRec || isProcessing) return;
-            
-            // Clean slate based on CodersSmile logic
-            if (Speech) {
-                const check = await Speech.isListening();
-                if (check.listening) await Speech.stop();
-                Speech.removeAllListeners();
-            }
-
-            isRec = true;
-            currentTranscript = '';
-            curLang = lang;
+            isRec = true; currentTranscript = ''; curLang = lang;
             
             setUIState('LISTENING');
             document.body.classList.add(side === 'left' ? 'active-left' : 'active-right');
             textDisplay.innerText = "Listening...";
 
             if (Speech) {
+                Speech.removeAllListeners();
                 Speech.addListener('partialResults', (data) => {
                     if (data.matches && data.matches.length > 0) {
                         currentTranscript = data.matches[0];
@@ -131,62 +130,48 @@
                 });
                 try {
                     await Speech.start({ language: curLang, partialResults: true, popup: false, continuous: true });
-                } catch (e) { log("Mic Start Error"); isRec = false; }
-            } else if (recognition) {
-                recognition.lang = curLang;
-                try { recognition.start(); } catch(e) {}
+                } catch (e) { isRec = false; }
             }
         }
 
         async function stopRecording() {
             if (!isRec) return;
-            isRec = false;
-            isProcessing = true;
+            isRec = false; isProcessing = true;
             document.body.classList.remove('active-left', 'active-right');
-            setUIState('THINKING');
+            setUIState('TRANSLATING');
 
-            if (Speech) {
-                try { await Speech.stop(); } catch(e) {}
-            } else if (recognition) {
-                try { recognition.stop(); } catch(e) {}
-            }
+            if (Speech) try { await Speech.stop(); } catch(e) {}
 
             setTimeout(async () => {
                 if (currentTranscript) {
-                    textDisplay.innerText = "...";
-                    await processPipeline(currentTranscript);
+                    await processFastSpeech(currentTranscript);
                 } else {
                     hardReset();
                 }
-            }, 800);
+            }, 300); // Super-short settle time for speed
         }
 
-        // --- PHASE 2: LOGIC PIPELINE (PIPELINE REFERENCE) ---
-        async function processPipeline(text) {
-            log("Translating...");
+        async function processFastSpeech(text) {
             const isMM = curLang.startsWith('my');
             const sl = isMM ? 'my' : 'en', tl = isMM ? 'en' : 'my';
             try {
+                // Fastest Google API
                 const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`);
                 const data = await res.json();
                 const result = data[0].map(s => s[0]).join('').trim();
                 textDisplay.innerText = result;
-                await speak(result, tl);
-            } catch (e) { log("Pipeline Error"); hardReset(); }
+                await speakFast(result, tl);
+            } catch (e) { hardReset(); }
         }
 
-        // --- PHASE 3: VOICE OUTPUT (EDGE TTS REFERENCE) ---
-        async function speak(text, lang) {
+        async function speakFast(text, lang) {
             setUIState('SPEAKING');
             const natural = document.getElementById('naturalSw').checked;
-            let success = false;
-
+            
             if (natural) {
                 try {
-                    log("Edge TTS Synthetic...");
-                    // Use Edge TTS Universal (Golden Standard for web output)
                     const tts = new EdgeTTS.EdgeTTS();
-                    // Multi-lingual mapping for all android devices
+                    // Using Multilingual voices for maximum speed and natural tone
                     const voice = (lang === 'my') ? 'my-MM-ThihaNeural' : 'en-US-AvaMultilingualNeural';
                     await tts.setVoice(voice);
                     const audioData = await tts.synthesize(text);
@@ -195,31 +180,19 @@
                     
                     masterAudio.src = url;
                     masterAudio.onended = () => { URL.revokeObjectURL(url); hardReset(); };
-                    masterAudio.onerror = () => { URL.revokeObjectURL(url); fallbackSpeak(text, lang); };
                     await masterAudio.play();
-                    success = true;
-                } catch (e) { 
-                    log("AI Voice Offline - Falling back");
-                }
+                    return;
+                } catch (e) {}
             }
-
-            if (!success) {
-                fallbackSpeak(text, lang);
-            }
-        }
-
-        function fallbackSpeak(text, lang) {
-            log("System Voice");
-            if (!window.SpeechSynthesisUtterance) { hardReset(); return; }
+            
+            // Ultra-Fast System Fallback
             window.speechSynthesis.cancel();
             const u = new SpeechSynthesisUtterance(text);
             u.lang = (lang === 'my') ? 'my-MM' : 'en-US';
             u.onend = () => hardReset();
-            u.onerror = () => hardReset();
             window.speechSynthesis.speak(u);
         }
 
-        // --- UI & LIFECYCLE ---
         function unlockAudio() {
             masterAudio.play().then(() => { masterAudio.pause(); }).catch(() => {});
             if (window.speechSynthesis) window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
@@ -237,9 +210,7 @@
         attach('btnENG', 'en-US', 'right');
         document.getElementById('menuBtn').addEventListener('click', () => document.getElementById('menu').classList.toggle('open'));
         document.getElementById('themeSw').addEventListener('change', () => document.body.classList.toggle('dark-mode'));
-
         document.addEventListener('deviceready', initSpeech, false);
-        setTimeout(() => { if (!Speech && !recognition) initSpeech(); }, 2000);
     </script>
 </body>
 </html>
