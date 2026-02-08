@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>PyawLike - Pro</title>
+    <title>PyawLike - Nilar Default</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
@@ -42,28 +42,28 @@
         const masterAudio = new Audio();
         let isRec = false, finalBuffer = '';
 
-        // --- 1. FULLSCREEN ---
+        // --- 1. FULLSCREEN ENGINE ---
         async function toggleFS() {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(e => {
-                    console.error("Fullscreen fail", e);
-                });
-            } else {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen();
-                }
-            }
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
+            else if (document.exitFullscreen) document.exitFullscreen();
         }
         document.getElementById('fsBtn').addEventListener('click', toggleFS);
 
-        // --- 2. RECORDING ---
+        // --- 2. RECORDING ENGINE (Logic Protected) ---
         function attach(btn, inputLang, targetLang, side) {
             btn.addEventListener('pointerdown', async (e) => {
                 e.preventDefault(); 
+                if(isProcessing) return;
+                
+                // Toggle Logic Support
                 if(isRec) { stop(inputLang, targetLang); return; }
                 
                 document.body.classList.add(side === 'left' ? 'active-left' : 'active-right');
                 textDisplay.innerText = "Listening...";
+                // Audio Prime for Android
+                masterAudio.src = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
+                masterAudio.play().catch(()=>{});
+                
                 isRec = true;
                 btn.setPointerCapture(e.pointerId);
 
@@ -71,17 +71,22 @@
                     try {
                         await nativeMic.requestPermissions(); 
                         await nativeMic.start({ language: inputLang, partialResults: true, popup: false, continuous: true });
+                        
+                        // LOGIC SAFETY: Catch both event types
                         nativeMic.addListener('partialResults', (d) => {
                             if(d.matches && d.matches.length > 0) {
                                 finalBuffer = d.matches[0];
                                 if(document.getElementById('textSw').checked) textDisplay.innerText = finalBuffer;
                             }
                         });
+                        nativeMic.addListener('results', (d) => {
+                            if(d.matches && d.matches.length > 0) finalBuffer = d.matches[0];
+                        });
                     } catch(e) { stop(inputLang, targetLang); showErr("Mic Error"); }
                 } else if ('webkitSpeechRecognition' in window) {
-                    // Browser Fallback
                     if (!window.rec) {
-                        window.rec = new webkitSpeechRecognition();
+                        const SpeechReq = window.webkitSpeechRecognition || window.speechRecognition;
+                        window.rec = new SpeechReq();
                         window.rec.continuous = true;
                         window.rec.interimResults = true;
                         window.rec.onresult = (ev) => {
@@ -98,22 +103,31 @@
 
             btn.addEventListener('pointerup', (e) => {
                 btn.releasePointerCapture(e.pointerId);
-                stop(inputLang, targetLang); 
+                // Only stop if we are actually recording
+                if(isRec) stop(inputLang, targetLang); 
             });
         }
 
+        let isProcessing = false;
         async function stop(inputLang, targetLang) {
             if(!isRec) return;
             isRec = false;
+            isProcessing = true;
             document.body.classList.remove('active-left', 'active-right');
+            
             if(nativeMic) { try { await nativeMic.stop(); nativeMic.removeAllListeners(); } catch(e){} }
             else if(window.rec) { window.rec.stop(); }
             
-            if(finalBuffer && finalBuffer.trim().length > 0) {
-                textDisplay.innerText = "Translating...";
-                await processTranslation(finalBuffer, inputLang, targetLang);
-                finalBuffer = "";
-            } else { textDisplay.innerText = "Ready"; }
+            setTimeout(async () => {
+                if(finalBuffer && finalBuffer.trim().length > 0) {
+                    textDisplay.innerText = "Translating...";
+                    await processTranslation(finalBuffer, inputLang, targetLang);
+                    finalBuffer = "";
+                } else { 
+                    textDisplay.innerText = "Ready"; 
+                    isProcessing = false;
+                }
+            }, 400);
         }
 
         async function processTranslation(text, inputLang, targetLang) {
@@ -125,7 +139,7 @@
                 const translatedText = data[0].map(s => s[0]).join('').trim();
                 if(document.getElementById('textSw').checked) textDisplay.innerText = translatedText;
                 await speak(translatedText, targetLang);
-            } catch(e) { showErr("Trans Fail"); }
+            } catch(e) { showErr("Trans Fail"); isProcessing = false; }
         }
 
         async function speak(text, lang) {
@@ -143,7 +157,8 @@
                     if(data.audio) {
                         const b = new Blob([Uint8Array.from(atob(data.audio), c => c.charCodeAt(0))], {type:'audio/wav'});
                         masterAudio.src = URL.createObjectURL(b);
-                        masterAudio.play();
+                        masterAudio.onended = () => { isProcessing = false; };
+                        await masterAudio.play();
                         return;
                     }
                 } catch(e) {}
@@ -153,13 +168,20 @@
                 if(typeof EdgeTTS !== 'undefined') {
                     const voice = lang.startsWith('my') ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
                     const tts = new EdgeTTS.EdgeTTS();
-                    await tts.speak({ text: text, voice: voice });
+                    // Using direct synthesis for more stable callback control
+                    const audioData = await tts.synthesize(text, voice);
+                    const blob = new Blob([audioData], { type: 'audio/mp3' });
+                    const url = URL.createObjectURL(blob);
+                    masterAudio.src = url;
+                    masterAudio.onended = () => { URL.revokeObjectURL(url); isProcessing = false; };
+                    await masterAudio.play();
                     return;
                 }
             } catch(e) {}
 
             const u = new SpeechSynthesisUtterance(text);
             u.lang = lang;
+            u.onend = () => { isProcessing = false; };
             window.speechSynthesis.speak(u);
         }
 
