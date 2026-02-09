@@ -5,6 +5,7 @@
 (function() {
     let deferredPrompt;
     const popup = document.getElementById('pwa-install-popup');
+    const overlay = document.getElementById('pwa-overlay');
     const installBtn = document.getElementById('pwa-install-btn');
     const cancelBtn = document.getElementById('pwa-cancel-btn');
     const descText = document.getElementById('pwa-desc');
@@ -48,12 +49,6 @@
         // Fallback for desktop or browsers that don't fire beforeinstallprompt immediately
         setTimeout(() => {
             if (!deferredPrompt && !isIOS && !isStandalone) {
-                // If we still don't have a prompt, show it as an info popup
-                descText.innerText = "Install the app for a faster, full-screen experience.";
-                installBtn.innerText = "How to Install";
-                installBtn.onclick = () => {
-                    alert("To install: Click the browser menu (⋮ or ⋯) and select 'Install' or 'Add to Home Screen'.");
-                };
                 showPopup();
             }
         }, 5000);
@@ -61,10 +56,12 @@
 
     function showPopup() {
         popup.classList.remove('hidden');
+        overlay.classList.remove('hidden');
     }
 
     function dismissPopup() {
         popup.classList.add('hidden');
+        overlay.classList.add('hidden');
         localStorage.setItem(STORAGE_KEY, Date.now());
     }
 
@@ -80,6 +77,7 @@
         }
         deferredPrompt = null;
         popup.classList.add('hidden');
+        overlay.classList.add('hidden');
     });
 
     cancelBtn.addEventListener('click', dismissPopup);
@@ -87,6 +85,7 @@
     window.addEventListener('appinstalled', () => {
         console.log('PWA was installed');
         popup.classList.add('hidden');
+        overlay.classList.add('hidden');
         deferredPrompt = null;
     });
 
