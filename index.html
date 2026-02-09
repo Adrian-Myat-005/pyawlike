@@ -53,6 +53,21 @@
         </div>
     </div>
 
+    <div id="pwa-install-popup" class="pwa-popup hidden">
+        <div class="pwa-glass-content">
+            <div class="pwa-icon">🔮</div>
+            <div class="pwa-text">
+                <h3>Get the App</h3>
+                <p id="pwa-desc">Install PyawLike for a better experience.</p>
+            </div>
+            <div class="pwa-actions">
+                <button id="pwa-install-btn" class="pwa-primary">Install</button>
+                <button id="pwa-cancel-btn" class="pwa-secondary">Not Now</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="pwa-popup.js"></script>
     <script>
         const btnMM=document.getElementById('btnMM'), btnENG=document.getElementById('btnENG'), mainCircle=document.getElementById('mainCircle');
         const textDisplay=document.getElementById('textDisplay'), menu=document.getElementById('menu'), waveContainer=document.getElementById('waveContainer');
