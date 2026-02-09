@@ -10,7 +10,7 @@
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
 
     function init() {
-        if (isStandalone) return; 
+        if (isStandalone || localStorage.getItem('pwa_installed') === 'true') return; 
 
         // Platform detection for instructions
         if (isIOS) {
@@ -37,7 +37,8 @@
 
         // Force show after 3 seconds if not already shown (Fallback/Manual)
         setTimeout(() => {
-            if (popup.classList.contains('hidden') && !isStandalone) {
+            const isInstalledFlag = localStorage.getItem('pwa_installed') === 'true';
+            if (popup.classList.contains('hidden') && !isStandalone && !isInstalledFlag) {
                 showPopup();
             }
         }, 3000);
@@ -68,6 +69,7 @@
     cancelBtn.addEventListener('click', dismissPopup);
 
     window.addEventListener('appinstalled', () => {
+        localStorage.setItem('pwa_installed', 'true');
         dismissPopup();
         deferredPrompt = null;
     });
