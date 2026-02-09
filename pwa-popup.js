@@ -21,11 +21,9 @@
     }
 
     function setupIOSPopup() {
-        setTimeout(() => {
-            descText.innerHTML = 'Tap Share <span style="font-size:16px">⎋</span> then "Add to Home Screen" <span style="font-size:16px">⊞</span>';
-            installBtn.style.display = 'none'; 
-            showPopup();
-        }, 2000);
+        descText.innerHTML = 'Tap Share <span style="font-size:16px">⎋</span> then "Add to Home Screen" <span style="font-size:16px">⊞</span>';
+        installBtn.style.display = 'none'; 
+        showPopup();
     }
 
     function setupWebPrompt() {
@@ -35,13 +33,11 @@
             showPopup();
         });
 
-        // Force show after 3 seconds if not already shown (Fallback/Manual)
-        setTimeout(() => {
-            const isInstalledFlag = localStorage.getItem('pwa_installed') === 'true';
-            if (popup.classList.contains('hidden') && !isStandalone && !isInstalledFlag) {
-                showPopup();
-            }
-        }, 3000);
+        // Show immediately if not standalone and not flagged as installed
+        const isInstalledFlag = localStorage.getItem('pwa_installed') === 'true';
+        if (popup.classList.contains('hidden') && !isStandalone && !isInstalledFlag) {
+            showPopup();
+        }
     }
 
     function showPopup() {
