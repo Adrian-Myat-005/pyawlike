@@ -11,8 +11,7 @@
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
 
     function init() {
-        const isInstalled = isStandalone || localStorage.getItem('pwa_installed') === 'true';
-        if (isInstalled) {
+        if (isStandalone) {
             if (menuInstallItem) menuInstallItem.style.display = 'none';
             return;
         } 
@@ -38,9 +37,8 @@
             showPopup();
         });
 
-        // Show immediately if not standalone and not flagged as installed
-        const isInstalledFlag = localStorage.getItem('pwa_installed') === 'true';
-        if (popup.classList.contains('hidden') && !isStandalone && !isInstalledFlag) {
+        // Show immediately if not standalone
+        if (popup.classList.contains('hidden') && !isStandalone) {
             showPopup();
         }
     }
@@ -79,7 +77,9 @@
 
     window.addEventListener('appinstalled', () => {
         localStorage.setItem('pwa_installed', 'true');
-        if (menuInstallItem) menuInstallItem.style.display = 'none';
+        if (window.matchMedia('(display-mode: standalone)').matches && menuInstallItem) {
+            menuInstallItem.style.display = 'none';
+        }
         dismissPopup();
         deferredPrompt = null;
     });
