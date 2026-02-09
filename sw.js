@@ -4,7 +4,8 @@ const ASSETS = [
   '/index.html',
   '/style.css',
   '/pwa-popup.js',
-  '/manifest.json'
+  '/manifest.json',
+  '/pyawlike.png'
 ];
 
 self.addEventListener('install', (event) => {

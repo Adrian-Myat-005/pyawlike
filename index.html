@@ -8,6 +8,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <link rel="icon" type="image/png" href="pyawlike.png">
+    <link rel="apple-touch-icon" href="pyawlike.png">
     <link rel="manifest" href="manifest.json">
     <script src="config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/edge-tts-universal/dist/browser.js"></script>
@@ -21,6 +23,11 @@
 </head>
 <body class="">
     
+    <div id="splash-screen">
+        <img src="pyawlike.png" alt="PyawLike Logo" class="splash-logo">
+        <div id="typewriter"></div>
+    </div>
+
     <div class="bottom-nav" id="bottomNav">
         <svg id="fsBtn" class="fs-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
         <div class="nav-dot" id="menuBtn"></div>
@@ -285,6 +292,30 @@
         
         // Initial render
         renderHistory();
+
+        // --- SPLASH SCREEN & TYPEWRITER ---
+        const splashScreen = document.getElementById('splash-screen');
+        const typewriterElement = document.getElementById('typewriter');
+        const appName = "pyawlike";
+        let charIndex = 0;
+
+        function type() {
+            if (charIndex < appName.length) {
+                typewriterElement.textContent += appName.charAt(charIndex);
+                charIndex++;
+                setTimeout(type, 150);
+            }
+        }
+
+        window.addEventListener('load', () => {
+            setTimeout(type, 300); // Start typewriter after a small delay
+            setTimeout(() => {
+                splashScreen.classList.add('fade-out');
+                setTimeout(() => {
+                    splashScreen.style.display = 'none';
+                }, 500);
+            }, 2500); // Total splash time
+        });
     </script>
 </body>
 </html>

@@ -280,6 +280,53 @@ body.dark-mode .pwa-minimal-content { border-bottom-color: rgba(255,255,255,0.05
 .pwa-secondary { background: rgba(0,0,0,0.05); color: var(--text); }
 body.dark-mode .pwa-secondary { background: rgba(255,255,255,0.05); }
 
+/* --- SPLASH SCREEN --- */
+#splash-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999999;
+    transition: opacity 0.5s ease;
+}
+
+#splash-screen.fade-out {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.splash-logo {
+    width: 120px;
+    height: 120px;
+    margin-bottom: 20px;
+}
+
+#typewriter {
+    font-size: 24px;
+    font-weight: 900;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--text);
+    min-height: 1.2em;
+}
+
+#typewriter::after {
+    content: '|';
+    animation: blink 0.7s infinite;
+    margin-left: 5px;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
 @keyframes dropDown {
     from { transform: translateX(-50%) translateY(-100%); }
     to { transform: translateX(-50%) translateY(0); }
