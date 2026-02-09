@@ -4,6 +4,7 @@
   "description": "Voice-to-Voice Translator & Note Taker",
   "start_url": "/",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
   "background_color": "#fcfbf7",
   "theme_color": "#fcfbf7",
   "icons": [

@@ -24,6 +24,39 @@ body {
     font-family: 'Inter', sans-serif; overflow: hidden; 
     display: flex; justify-content: center; align-items: center; 
     transition: background 0.4s;
+    padding-top: env(titlebar-area-height, 0);
+}
+
+/* --- WINDOW CONTROLS OVERLAY --- */
+#title-bar {
+    position: fixed;
+    top: env(titlebar-area-y, 0);
+    left: env(titlebar-area-x, 0);
+    width: env(titlebar-area-width, 100%);
+    height: env(titlebar-area-height, 30px);
+    display: none;
+    align-items: center;
+    padding: 0 15px;
+    background: var(--bg);
+    z-index: 2000001;
+    -webkit-app-region: drag;
+    app-region: drag;
+    transition: background 0.4s;
+}
+
+@media (display-mode: window-controls-overlay) {
+    #title-bar {
+        display: flex;
+    }
+}
+
+#title-bar-text {
+    font-size: 12px;
+    font-weight: 700;
+    opacity: 0.5;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    pointer-events: none;
 }
 
 /* RECORDER CORE */
