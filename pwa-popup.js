@@ -40,15 +40,23 @@
 
     function setupWebPrompt() {
         window.addEventListener('beforeinstallprompt', (e) => {
-            // Prevent Chrome 67 and earlier from automatically showing the prompt
             e.preventDefault();
-            // Stash the event so it can be triggered later.
             deferredPrompt = e;
-            
-            setTimeout(() => {
-                showPopup();
-            }, 2000);
+            showPopup();
         });
+
+        // Fallback for desktop or browsers that don't fire beforeinstallprompt immediately
+        setTimeout(() => {
+            if (!deferredPrompt && !isIOS && !isStandalone) {
+                // If we still don't have a prompt, show it as an info popup
+                descText.innerText = "Install the app for a faster, full-screen experience.";
+                installBtn.innerText = "How to Install";
+                installBtn.onclick = () => {
+                    alert("To install: Click the browser menu (⋮ or ⋯) and select 'Install' or 'Add to Home Screen'.");
+                };
+                showPopup();
+            }
+        }, 5000);
     }
 
     function showPopup() {
