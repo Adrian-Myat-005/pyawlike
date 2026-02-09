@@ -13,22 +13,20 @@
 </head>
 <body class="">
     
-    <button class="line-btn note-toggle" id="noteToggle"></button>
-
-    <div class="note-page" id="notePage">
-        <div class="note-controls">
-            <button class="line-btn close-note-btn" id="closeNote"></button>
-        </div>
-        <div class="groq-popup" id="apiPopup">
-            <input type="password" id="groqKey" class="groq-input" placeholder="PASTE GROQ API KEY">
-            <button class="activate-btn" id="activateGroq">ACTIVATE AI</button>
-        </div>
-        <textarea class="note-content" id="noteContent" placeholder="..."></textarea>
+    <div class="bottom-nav" id="bottomNav">
+        <svg id="fsBtn" class="fs-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+        <div class="nav-dot" id="menuBtn"></div>
+        <div class="nav-plus" id="historyToggle">+</div>
     </div>
 
-    <div class="bottom-nav" id="bottomNav">
-        <svg id="fsBtn" class="fs-icon" viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
-        <div class="nav-dot" id="menuBtn"></div>
+    <div class="history-page" id="historyPage">
+        <div class="history-header">
+            <div class="header-controls">
+                <div class="clear-btn" id="clearHistory"></div>
+                <div class="close-history" id="closeHistory">×</div>
+            </div>
+        </div>
+        <div class="history-content" id="historyContent"></div>
     </div>
 
     <div class="dropdown" id="menu">
@@ -58,13 +56,73 @@
     <script>
         const btnMM=document.getElementById('btnMM'), btnENG=document.getElementById('btnENG'), mainCircle=document.getElementById('mainCircle');
         const textDisplay=document.getElementById('textDisplay'), menu=document.getElementById('menu'), waveContainer=document.getElementById('waveContainer');
-        const textSw=document.getElementById('textSw'), noteToggle=document.getElementById('noteToggle'), notePage=document.getElementById('notePage');
-        const closeNote=document.getElementById('closeNote'), noteContent=document.getElementById('noteContent'), speakerWrapper=document.getElementById('speakerWrapper');
-        const groqKey=document.getElementById('groqKey'), apiPopup=document.getElementById('apiPopup'), activateGroq=document.getElementById('activateGroq'), stopDot=document.getElementById('stopDot'), menuBtn=document.getElementById('menuBtn');
+        const textSw=document.getElementById('textSw'), speakerWrapper=document.getElementById('speakerWrapper');
+        const stopDot=document.getElementById('stopDot'), menuBtn=document.getElementById('menuBtn');
+        const historyToggle=document.getElementById('historyToggle'), historyPage=document.getElementById('historyPage'), historyContent=document.getElementById('historyContent'), clearHistory=document.getElementById('clearHistory'), closeHistory=document.getElementById('closeHistory');
         
         const audioObj = new Audio();
-        let isRecording = false, recognition = null, isProcessing = false;
-        let lastBaseText = '';
+        let isRecording = false, recognition = null, isRecordingHistory = false;
+
+        // --- HISTORY LOGIC ---
+        function saveToHistory(text, lang, translated) {
+            if (!isRecordingHistory) return;
+            const history = JSON.parse(localStorage.getItem('tr_history') || '[]');
+            history.push({ 
+                id: Date.now(),
+                time: new Date().toLocaleTimeString(), 
+                input: text, 
+                inputLang: lang === 'my-MM' ? 'MM' : 'ENG',
+                output: translated,
+                outputLang: lang === 'my-MM' ? 'ENG' : 'MM'
+            });
+            localStorage.setItem('tr_history', JSON.stringify(history));
+            renderHistory();
+        }
+
+        function deleteHistoryItem(id) {
+            const history = JSON.parse(localStorage.getItem('tr_history') || '[]');
+            const filtered = history.filter(h => h.id !== id);
+            localStorage.setItem('tr_history', JSON.stringify(filtered));
+            renderHistory();
+        }
+
+        function renderHistory() {
+            const history = JSON.parse(localStorage.getItem('tr_history') || '[]');
+            historyContent.innerHTML = history.slice().reverse().map(h => `
+                <div class="history-item">
+                    <div class="h-item-header">
+                        <div class="h-time">${h.time}</div>
+                        <div class="delete-item" onclick="event.stopPropagation(); deleteHistoryItem(${h.id})">×</div>
+                    </div>
+                    <div class="h-row"><strong>${h.inputLang}:</strong> ${h.input}</div>
+                    <div class="h-row"><strong>${h.outputLang}:</strong> ${h.output}</div>
+                </div>
+            `).join('');
+        }
+
+        clearHistory.addEventListener('click', () => {
+            localStorage.removeItem('tr_history');
+            renderHistory();
+        });
+
+        closeHistory.addEventListener('click', () => {
+            historyPage.classList.remove('open');
+        });
+
+        let historyClickTimeout;
+        historyToggle.addEventListener('click', (e) => {
+            if (e.detail === 1) {
+                historyClickTimeout = setTimeout(() => {
+                    isRecordingHistory = !isRecordingHistory;
+                    historyToggle.innerText = isRecordingHistory ? "REC" : "+";
+                    historyToggle.classList.toggle('recording', isRecordingHistory);
+                }, 250);
+            } else if (e.detail === 2) {
+                clearTimeout(historyClickTimeout);
+                historyPage.classList.toggle('open');
+                if (historyPage.classList.contains('open')) renderHistory();
+            }
+        });
 
         // --- MENU ---
         menuBtn.addEventListener('click', () => menu.classList.toggle('open'));
@@ -75,60 +133,6 @@
             else waveContainer.classList.remove('visible');
         });
 
-        // --- GROQ ---
-        let groqActive = localStorage.getItem('groq_active') === 'true';
-        function updateGroqUI() {
-            const active = groqActive && groqKey.value.trim().length > 10;
-            noteToggle.classList.toggle('api-active', active);
-            activateGroq.classList.toggle('active', active);
-            activateGroq.innerText = active ? "AI ACTIVE" : "ACTIVATE AI";
-        }
-        activateGroq.addEventListener('click', () => {
-            groqActive = !groqActive;
-            localStorage.setItem('groq_active', groqActive);
-            localStorage.setItem('groq_key', groqKey.value);
-            updateGroqUI();
-            if (groqActive) setTimeout(() => apiPopup.classList.remove('show'), 500);
-        });
-        groqKey.value = localStorage.getItem('groq_key') || '';
-        updateGroqUI();
-
-        async function smartFormat(text) {
-            if (!groqActive || groqKey.value.length < 10) return text;
-            try {
-                const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-                    method: "POST", headers: { "Authorization": `Bearer ${groqKey.value}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ model: "llama3-8b-8192", temperature: 0.2, messages: [{ role: "system", content: "Role: Content Structurer.\nTask: Refine into clean notes. PRESERVE ORIGINAL LANGUAGE." }, { role: "user", content: text }] })
-                });
-                const data = await res.json();
-                return data.choices?.[0]?.message?.content || text;
-            } catch (e) { return text; }
-        }
-
-        // --- UI TOGGLES ---
-        function toggleNote(open) {
-            notePage.classList.toggle('open', open);
-            speakerWrapper.classList.toggle('mini', open);
-            document.body.classList.toggle('note-open', open);
-            if (!open) {
-                speakerWrapper.classList.remove('split-active');
-                apiPopup.classList.remove('show');
-                if (isRecording) recognition?.stop();
-            }
-        }
-        let clickTimeout;
-        noteToggle.addEventListener('click', (e) => {
-            if (e.detail === 1) {
-                clickTimeout = setTimeout(() => {
-                    toggleNote(true);
-                }, 250);
-            } else if (e.detail === 2) {
-                clearTimeout(clickTimeout);
-                apiPopup.classList.toggle('show');
-            }
-        });
-        closeNote.addEventListener('click', () => toggleNote(false));
-        
         // --- MIC ---
         let isSwitching = false;
         function initMic(lang) {
@@ -142,29 +146,17 @@
             }
 
             const rec = new Speech();
-            const isNote = notePage.classList.contains('open');
-            rec.lang = lang; rec.continuous = isNote; rec.interimResults = true;
+            rec.lang = lang; rec.continuous = false; rec.interimResults = true;
             
-            const currentVal = noteContent.value.trim();
-            const needsSpace = currentVal && !currentVal.endsWith('\n') && !currentVal.endsWith(' ');
-            lastBaseText = noteContent.value + (needsSpace ? " " : "");
-
             rec.onstart = () => {
                 isRecording = true;
-                if (!isNote) document.body.classList.add(lang === 'my-MM' ? 'active-left' : 'active-right');
-                else {
-                    speakerWrapper.classList.add('active-rec-ui');
-                    btnENG.querySelector('.btn-label').innerText = lang === 'my-MM' ? 'MM' : 'ENG';
-                }
-                if (!isNote && !textSw.checked) waveContainer.classList.add('visible');
+                document.body.classList.add(lang === 'my-MM' ? 'active-left' : 'active-right');
+                if (!textSw.checked) waveContainer.classList.add('visible');
             };
             rec.onerror = (err) => {
                 isRecording = false;
                 speakerWrapper.classList.remove('active-rec-ui');
                 waveContainer.classList.remove('visible');
-                if (isNote && (err.error === 'network' || err.error === 'no-speech')) {
-                    setTimeout(() => { if (!isRecording) handleTap(lang); }, 100);
-                }
             };
             rec.onresult = (ev) => {
                 let final = '', interim = '';
@@ -172,13 +164,8 @@
                     if (ev.results[i].isFinal) final += ev.results[i][0].transcript;
                     else interim += ev.results[i][0].transcript;
                 }
-                if (isNote) { 
-                    noteContent.value = lastBaseText + final + interim; 
-                    noteContent.scrollTop = noteContent.scrollHeight; 
-                } else { 
-                    textDisplay.innerText = final + interim; 
-                    if (textSw.checked) textDisplay.classList.add('visible'); 
-                }
+                textDisplay.innerText = final + interim; 
+                if (textSw.checked) textDisplay.classList.add('visible'); 
             };
             rec.onend = () => {
                 if (isSwitching) return;
@@ -186,51 +173,11 @@
                 document.body.classList.remove('active-left', 'active-right');
                 speakerWrapper.classList.remove('active-rec-ui');
                 waveContainer.classList.remove('visible');
-                if (isNote) {
-                    const fullText = noteContent.value.substring(lastBaseText.length);
-                    if (fullText.trim()) processNoteFinal(fullText);
-                    btnENG.querySelector('.btn-label').innerText = 'ENG';
-                } else {
-                    const finalTxt = textDisplay.innerText;
-                    if (finalTxt) processJob(finalTxt, lang);
-                }
+                const finalTxt = textDisplay.innerText;
+                if (finalTxt) processJob(finalTxt, lang);
                 recognition = null;
             };
             return rec;
-        }
-
-        async function processNoteFinal(rawText) {
-            if (!rawText.trim() || isProcessing) return;
-            isProcessing = true;
-            
-            const structured = await smartFormat(rawText);
-            
-            // If the AI actually changed something, we replace the raw part
-            if (structured.trim() !== rawText.trim()) {
-                // Remove the raw text that was just typed in real-time
-                const base = noteContent.value.substring(0, lastBaseText.length);
-                noteContent.value = base;
-                typeWriter(structured);
-            }
-            isProcessing = false;
-        }
-
-        function typeWriter(text) {
-            let i = 0;
-            const currentVal = noteContent.value;
-            // No forced double newlines, just a space if needed
-            const prefix = (currentVal && !currentVal.endsWith('\n') && !currentVal.endsWith(' ')) ? " " : "";
-            let targetText = prefix + text;
-            
-            function type() { 
-                if (i < targetText.length) { 
-                    noteContent.value += targetText.charAt(i); 
-                    i++; 
-                    noteContent.scrollTop = noteContent.scrollHeight; 
-                    setTimeout(type, 15); 
-                } 
-            }
-            type();
         }
 
         async function processJob(text, inputLang) {
@@ -243,6 +190,8 @@
                 textDisplay.classList.add('visible');
                 playOutput(result, tl);
                 
+                if (isRecordingHistory) saveToHistory(text, inputLang, result);
+
                 // Clear text after 3 seconds
                 setTimeout(() => {
                     textDisplay.classList.remove('visible');
@@ -266,8 +215,6 @@
 
         // --- SPLIT RECORDER LOGIC ---
         const activateSplit = (e) => {
-            if (isProcessing) return;
-            if (notePage.classList.contains('open')) return; // No split in note page
             if (!speakerWrapper.classList.contains('split-active')) {
                 speakerWrapper.classList.add('split-active');
             }
@@ -276,38 +223,13 @@
         speakerWrapper.addEventListener('touchstart', activateSplit);
         speakerWrapper.addEventListener('click', activateSplit);
 
-        let recClickTimeout;
         btnENG.addEventListener('click', (e) => { 
             e.stopPropagation(); 
-            const isNote = notePage.classList.contains('open');
-            
-            if (isNote) {
-                if (e.detail === 1) {
-                    recClickTimeout = setTimeout(() => {
-                        if (isRecording && recognition.lang === 'en-US') {
-                            recognition.stop();
-                        } else {
-                            if (isRecording) { isSwitching = true; recognition.onend = () => { isSwitching = false; handleTap('en-US'); }; recognition.stop(); }
-                            else handleTap('en-US');
-                        }
-                    }, 250);
-                } else if (e.detail === 2) {
-                    clearTimeout(recClickTimeout);
-                    if (isRecording && recognition.lang === 'my-MM') {
-                        recognition.stop();
-                    } else {
-                        if (isRecording) { isSwitching = true; recognition.onend = () => { isSwitching = false; handleTap('my-MM'); }; recognition.stop(); }
-                        else handleTap('my-MM');
-                    }
-                }
-            } else {
-                // Translator Mode
-                if (isRecording && recognition.lang !== 'en-US') {
-                    isSwitching = true;
-                    recognition.onend = () => { isSwitching = false; handleTap('en-US'); };
-                    recognition.stop();
-                } else handleTap('en-US');
-            }
+            if (isRecording && recognition.lang !== 'en-US') {
+                isSwitching = true;
+                recognition.onend = () => { isSwitching = false; handleTap('en-US'); };
+                recognition.stop();
+            } else handleTap('en-US');
         });
 
         btnMM.addEventListener('click', (e) => { 
@@ -328,11 +250,14 @@
 
         window.addEventListener('click', (e) => {
             if (menu.classList.contains('open') && !menu.contains(e.target) && e.target.id !== 'menuBtn') menu.classList.remove('open');
-            if (apiPopup.classList.contains('show') && !apiPopup.contains(e.target) && e.target.id !== 'noteToggle') apiPopup.classList.remove('show');
+            if (historyPage.classList.contains('open') && !historyPage.contains(e.target) && e.target.id !== 'historyToggle') historyPage.classList.remove('open');
         });
 
         document.getElementById('themeSw').addEventListener('change', (e) => document.body.classList.toggle('dark-mode', e.target.checked));
         document.getElementById('fsBtn').addEventListener('click', () => { !document.fullscreenElement ? document.documentElement.requestFullscreen() : document.exitFullscreen(); });
+        
+        // Initial render
+        renderHistory();
     </script>
 </body>
 </html>
