@@ -5,12 +5,17 @@
     const installBtn = document.getElementById('pwa-install-btn');
     const cancelBtn = document.getElementById('pwa-cancel-btn');
     const descText = document.getElementById('pwa-desc');
+    const menuInstallItem = document.getElementById('menuInstallItem');
 
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
 
     function init() {
-        if (isStandalone || localStorage.getItem('pwa_installed') === 'true') return; 
+        const isInstalled = isStandalone || localStorage.getItem('pwa_installed') === 'true';
+        if (isInstalled) {
+            if (menuInstallItem) menuInstallItem.style.display = 'none';
+            return;
+        } 
 
         // Platform detection for instructions
         if (isIOS) {
@@ -64,8 +69,17 @@
 
     cancelBtn.addEventListener('click', dismissPopup);
 
+    if (menuInstallItem) {
+        menuInstallItem.addEventListener('click', () => {
+            showPopup();
+            const menu = document.getElementById('menu');
+            if (menu) menu.classList.remove('open');
+        });
+    }
+
     window.addEventListener('appinstalled', () => {
         localStorage.setItem('pwa_installed', 'true');
+        if (menuInstallItem) menuInstallItem.style.display = 'none';
         dismissPopup();
         deferredPrompt = null;
     });
