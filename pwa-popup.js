@@ -1,7 +1,3 @@
-/**
- * Smart PWA Install Popup Module
- * UX Strategy: Non-intrusive, Platform-aware, Contextual.
- */
 (function() {
     let deferredPrompt;
     const popup = document.getElementById('pwa-install-popup');
@@ -10,18 +6,11 @@
     const cancelBtn = document.getElementById('pwa-cancel-btn');
     const descText = document.getElementById('pwa-desc');
 
-    const STORAGE_KEY = 'pwa_popup_dismissed';
-    const COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 Hours
-
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
 
-    // 1. Core Logic: Should we show it?
     function init() {
-        if (isStandalone) return; // Already installed
-
-        const dismissedAt = localStorage.getItem(STORAGE_KEY);
-        if (dismissedAt && (Date.now() - dismissedAt < COOLDOWN_MS)) return;
+        if (isStandalone) return; 
 
         // Platform detection for instructions
         if (isIOS) {
@@ -33,8 +22,8 @@
 
     function setupIOSPopup() {
         setTimeout(() => {
-            descText.innerHTML = 'Tap the Share icon <span style="font-size:16px">⎋</span>, then select "Add to Home Screen" <span style="font-size:16px">⊞</span>';
-            installBtn.style.display = 'none'; // iOS can't trigger native prompt via button
+            descText.innerHTML = 'Tap Share <span style="font-size:16px">⎋</span> then "Add to Home Screen" <span style="font-size:16px">⊞</span>';
+            installBtn.style.display = 'none'; 
             showPopup();
         }, 2000);
     }
@@ -46,12 +35,12 @@
             showPopup();
         });
 
-        // Fallback for desktop or browsers that don't fire beforeinstallprompt immediately
+        // Force show after 3 seconds if not already shown (Fallback/Manual)
         setTimeout(() => {
-            if (!deferredPrompt && !isIOS && !isStandalone) {
+            if (popup.classList.contains('hidden') && !isStandalone) {
                 showPopup();
             }
-        }, 5000);
+        }, 3000);
     }
 
     function showPopup() {
@@ -62,34 +51,27 @@
     function dismissPopup() {
         popup.classList.add('hidden');
         overlay.classList.add('hidden');
-        localStorage.setItem(STORAGE_KEY, Date.now());
     }
 
-    // 2. Event Listeners
     installBtn.addEventListener('click', async () => {
-        if (!deferredPrompt) return;
-        
-        deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        
-        if (outcome === 'accepted') {
-            console.log('User accepted the PWA install');
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            deferredPrompt = null;
+        } else {
+            // Manual fallback if browser doesn't support the trigger
+            alert("To install: Open your browser menu (⋮ or ⋯) and look for 'Install App' or 'Add to Home Screen'.");
         }
-        deferredPrompt = null;
-        popup.classList.add('hidden');
-        overlay.classList.add('hidden');
+        dismissPopup();
     });
 
     cancelBtn.addEventListener('click', dismissPopup);
 
     window.addEventListener('appinstalled', () => {
-        console.log('PWA was installed');
-        popup.classList.add('hidden');
-        overlay.classList.add('hidden');
+        dismissPopup();
         deferredPrompt = null;
     });
 
-    // Run
     if (document.readyState === 'complete') {
         init();
     } else {
