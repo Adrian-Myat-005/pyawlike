@@ -1,23 +1,14 @@
-const CACHE_NAME = 'pyawlike-v1';
-const ASSETS = [
-  '/',
-  '/index.html',
-  '/style.css',
-  '/pwa-popup.js',
-  '/manifest.json',
-  '/pyawlike.png'
-];
-
-self.addEventListener('install', (event) => {
+// Service Worker: CACHE BYPASS MODE
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
+    caches.keys().then((keys) => {
+      return Promise.all(keys.map((key) => caches.delete(key)));
+    }).then(() => self.clients.claim())
   );
 });
 
+// Always fetch from network, never from cache
 self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request).then((response) => {
-      return response || fetch(event.request);
-    })
-  );
+  event.respondWith(fetch(event.request));
 });
