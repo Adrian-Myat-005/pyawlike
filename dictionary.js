@@ -41,7 +41,7 @@
         dicHomeScreen.style.display = 'block';
         dicBackBtn.style.visibility = 'hidden';
         try {
-            const res = await fetch('/api/dictionary?type=feed');
+            const res = await fetch('/api/lookup?type=feed');
             if (res.ok) {
                 const data = await res.json();
                 renderFeed(data.words);
@@ -86,7 +86,7 @@
         updateBackBtn();
         
         try {
-            const res = await fetch(`/api/dictionary?word=${encodeURIComponent(word)}`);
+            const res = await fetch(`/api/lookup?word=${encodeURIComponent(word)}`);
             if (res.ok) {
                 const data = await res.json();
                 dicOriginal.innerText = data.original;
