@@ -224,42 +224,29 @@
         });
 
         let historyPressTimer;
-        historyToggle.addEventListener('mousedown', (e) => {
+        const startHistoryPress = (e) => {
             historyPressTimer = setTimeout(() => {
+                historyPressTimer = null;
                 playClickSound();
                 historyPage.classList.add('open');
                 renderHistory();
-                historyPressTimer = null;
             }, 500);
-        });
-        historyToggle.addEventListener('mouseup', () => {
+        };
+        const endHistoryPress = (e) => {
             if (historyPressTimer) {
                 clearTimeout(historyPressTimer);
+                historyPressTimer = null;
                 // Single Click Logic
                 playClickSound();
                 isRecordingHistory = !isRecordingHistory;
                 historyToggle.innerText = isRecordingHistory ? "REC" : "+";
                 historyToggle.classList.toggle('recording', isRecordingHistory);
             }
-        });
-        // Touch support
-        historyToggle.addEventListener('touchstart', (e) => {
-            historyPressTimer = setTimeout(() => {
-                playClickSound();
-                historyPage.classList.add('open');
-                renderHistory();
-                historyPressTimer = null;
-            }, 500);
-        }, { passive: true });
-        historyToggle.addEventListener('touchend', () => {
-            if (historyPressTimer) {
-                clearTimeout(historyPressTimer);
-                playClickSound();
-                isRecordingHistory = !isRecordingHistory;
-                historyToggle.innerText = isRecordingHistory ? "REC" : "+";
-                historyToggle.classList.toggle('recording', isRecordingHistory);
-            }
-        });
+        };
+
+        historyToggle.addEventListener('pointerdown', startHistoryPress);
+        historyToggle.addEventListener('pointerup', endHistoryPress);
+        historyToggle.addEventListener('pointerleave', () => { if(historyPressTimer) clearTimeout(historyPressTimer); });
 
         // --- MENU ---
         menuBtn.addEventListener('click', () => menu.classList.toggle('open'));
