@@ -113,20 +113,22 @@ async function fetchGoogleData(word, sl, tl) {
 
 async function fetchDatamuseData(word) {
     try {
-        // Fetch extra synonyms and examples (usage hints)
-        const synUrl = `https://api.datamuse.com/words?rel_syn=${encodeURIComponent(word)}&max=20`;
-        const extraExUrl = `https://api.datamuse.com/words?rel_trg=${encodeURIComponent(word)}&max=10`;
+        const synUrl = `https://api.datamuse.com/words?rel_syn=${encodeURIComponent(word)}&max=30`;
+        const antUrl = `https://api.datamuse.com/words?rel_ant=${encodeURIComponent(word)}&max=20`;
+        const extraExUrl = `https://api.datamuse.com/words?rel_trg=${encodeURIComponent(word)}&max=15`;
         
-        const [syns, related] = await Promise.all([
+        const [syns, ants, related] = await Promise.all([
             fetchJSON(synUrl).catch(() => []),
+            fetchJSON(antUrl).catch(() => []),
             fetchJSON(extraExUrl).catch(() => [])
         ]);
         
         return {
             synonyms: syns.map(w => w.word),
+            antonyms: ants.map(w => w.word),
             related: related.map(w => w.word)
         };
-    } catch (e) { return { synonyms: [], related: [] }; }
+    } catch (e) { return { synonyms: [], antonyms: [], related: [] }; }
 }
 
 async function fetchFreeDictData(word) {
@@ -134,17 +136,23 @@ async function fetchFreeDictData(word) {
         const url = `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`;
         const data = await fetchJSON(url);
         let examples = [];
+        let synonyms = [];
+        let antonyms = [];
         if (Array.isArray(data)) {
             data.forEach(entry => {
                 (entry.meanings || []).forEach(m => {
+                    if (m.synonyms) synonyms.push(...m.synonyms);
+                    if (m.antonyms) antonyms.push(...m.antonyms);
                     (m.definitions || []).forEach(d => {
                         if (d.example) examples.push(d.example);
+                        if (d.synonyms) synonyms.push(...d.synonyms);
+                        if (d.antonyms) antonyms.push(...d.antonyms);
                     });
                 });
             });
         }
-        return examples;
-    } catch (e) { return []; }
+        return { examples, synonyms, antonyms };
+    } catch (e) { return { examples: [], synonyms: [], antonyms: [] }; }
 }
 
 module.exports = async (req, res) => {
@@ -171,10 +179,10 @@ module.exports = async (req, res) => {
         const isMM = /[\u1000-\u109F]/.test(word);
         
         // Fetch from external APIs aggressively
-        const [google, datamuse, freeDictEx] = await Promise.all([
+        const [google, datamuse, freeDict] = await Promise.all([
             fetchGoogleData(word, isMM ? 'my' : 'en', isMM ? 'en' : 'my'),
-            isMM ? Promise.resolve({synonyms:[], related:[]}) : fetchDatamuseData(word),
-            isMM ? Promise.resolve([]) : fetchFreeDictData(word)
+            isMM ? Promise.resolve({synonyms:[], antonyms:[], related:[]}) : fetchDatamuseData(word),
+            isMM ? Promise.resolve({examples:[], synonyms:[], antonyms:[]}) : fetchFreeDictData(word)
         ]);
 
         // Merge DB data with Fresh API data
@@ -191,7 +199,7 @@ module.exports = async (req, res) => {
         }
 
         // Prepare Examples (Aggressively targeting 5+)
-        let finalExamples = [...google.examples, ...freeDictEx];
+        let finalExamples = [...google.examples, ...freeDict.examples];
         if (dbRows.length > 0 && dbRows[0].examples) {
             try {
                 const dbEx = JSON.parse(dbRows[0].examples);
@@ -204,7 +212,9 @@ module.exports = async (req, res) => {
             .filter(ex => ex && ex.length > 10 && ex.toLowerCase().includes(word.toLowerCase().substring(0, 3)))
             .slice(0, 8); // Keep up to 8 to ensure quality
 
-        const finalSynonyms = [...new Set([...google.synonyms, ...datamuse.synonyms])];
+        // Prepare Synonyms & Antonyms (Plenty in connection)
+        const finalSynonyms = [...new Set([...google.synonyms, ...datamuse.synonyms, ...freeDict.synonyms])].filter(s => s.toLowerCase() !== word.toLowerCase());
+        const finalAntonyms = [...new Set([...datamuse.antonyms, ...freeDict.antonyms])].filter(a => a.toLowerCase() !== word.toLowerCase());
 
         res.status(200).json({
             original: word,
@@ -212,8 +222,8 @@ module.exports = async (req, res) => {
             meanings: combinedMeanings,
             examples: finalExamples,
             synonyms: finalSynonyms,
-            antonyms: dbRows[0] ? JSON.parse(dbRows[0].antonyms || '[]') : [],
-            acronyms: dbRows[0] ? JSON.parse(dbRows[0].acronyms || '[]') : []
+            antonyms: finalAntonyms,
+            acronyms: dbRows[0] ? JSON.parse(dbRows[0].antonyms || '[]') : []
         });
     } catch (e) { 
         console.error("Lookup Error:", e);
