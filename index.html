@@ -457,7 +457,6 @@
                         const caution = document.getElementById('payment-caution');
                         caution.innerText = `TAP TO COPY: ${phone}`;
                         caution.classList.add('visible');
-                        setTimeout(() => caution.classList.remove('visible'), 8000);
                     }, 1500);
                     return; 
                 } else if (method === 'wave') {
@@ -480,8 +479,12 @@
                 playClickSound();
                 cautionBox.innerText = "NUMBER COPIED! ✅";
                 setTimeout(() => {
-                    cautionBox.innerText = `TAP TO COPY: ${phone}`;
-                }, 1500);
+                    cautionBox.classList.remove('visible');
+                    // Reset text for next time
+                    setTimeout(() => {
+                        cautionBox.innerText = `TAP TO COPY: ${phone}`;
+                    }, 500);
+                }, 2000);
             });
         });
         

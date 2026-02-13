@@ -485,7 +485,7 @@ body.dark-mode .pwa-secondary { background: rgba(255,255,255,0.05); }
 
 .payment-caution {
     position: fixed;
-    top: calc(50% + 130px);
+    bottom: 100px;
     left: 50%;
     transform: translateX(-50%) translateY(10px);
     background: var(--bg);
