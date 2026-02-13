@@ -166,12 +166,11 @@
         const isExpanded = btn.classList.toggle('expanded');
         
         container.querySelectorAll('.hidden-item').forEach(item => {
-            item.style.display = isExpanded ? 'block' : 'none';
-        });
-
-        // Special handling for Flex items in Relations
-        container.querySelectorAll('.relation-word.hidden-item').forEach(item => {
-            item.style.display = isExpanded ? 'flex' : 'none';
+            if (item.classList.contains('relation-word')) {
+                item.style.display = isExpanded ? 'flex' : 'none';
+            } else {
+                item.style.display = isExpanded ? 'block' : 'none';
+            }
         });
 
         btn.innerText = isExpanded ? `Show less` : `Show all ${label} (${count})`;

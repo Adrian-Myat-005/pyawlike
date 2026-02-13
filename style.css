@@ -451,10 +451,10 @@ body.dark-mode .meaning-block { background: rgba(255,255,255,0.03); }
 .section-header { font-size: 11px; font-weight: 800; opacity: 0.5; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; padding: 10px 0; }
 .section-header .toggle-icon { transition: transform 0.3s; }
 .section-header.collapsed .toggle-icon { transform: rotate(-90deg); }
-.section-content { transition: all 0.3s ease-out; overflow: hidden; max-height: 2000px; }
+.section-content { transition: all 0.3s ease-out; overflow: hidden; max-height: 10000px; }
 .section-content.collapsed { max-height: 0; opacity: 0; }
 
-.hidden-item { display: none !important; }
+.hidden-item { display: none; }
 
 .show-more-btn {
     width: 100%;
