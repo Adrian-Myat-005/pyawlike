@@ -109,9 +109,13 @@
 
     window.playText = (text) => {
         const isMM = /[\u1000-\u109F]/.test(text);
-        const voice = isMM ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
-        fetch(`https://pyawlike.vercel.app/api/edge`, { method: 'POST', body: JSON.stringify({ text, voice }) })
-            .then(res => res.blob()).then(blob => new Audio(URL.createObjectURL(blob)).play());
+        const lang = isMM ? 'my' : 'en';
+        const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${lang}&client=tw-ob`;
+        new Audio(url).play().catch(e => {
+            console.error("Direct TTS failed, trying proxy...");
+            fetch(`/api/edge`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice: isMM ? 'my-MM-NilarNeural' : 'en-US-AvaNeural' }) })
+                .then(res => res.blob()).then(blob => new Audio(URL.createObjectURL(blob)).play());
+        });
     };
 
     searchLangBtn.addEventListener('click', () => { kbLanguage = kbLanguage === 'ENG' ? 'MM' : 'ENG'; searchLangBtn.innerText = kbLanguage; kbInput.placeholder = kbLanguage === 'ENG' ? 'Type word...' : 'စာရိုက်ပါ...'; });
@@ -139,11 +143,25 @@
     dicBackBtn.addEventListener('click', () => { if (dicHistory.length > 1) { dicHistory.pop(); searchWord(dicHistory.pop(), true); } else { showHomeScreen(); } });
     function updateBackBtn() { dicBackBtn.style.visibility = dicHistory.length > 1 ? 'visible' : 'hidden'; }
 
-    // LONG PRESS
-    let pressTimer, animationTimer;
-    const startPress = (e) => { if (e.target === document.body && !dicPopup.classList.contains('open')) { const touch = e.touches ? e.touches[0] : e; document.body.style.setProperty('--press-x', touch.clientX+'px'); document.body.style.setProperty('--press-y', touch.clientY+'px'); animationTimer = setTimeout(() => document.body.classList.add('pressing'), 200); pressTimer = setTimeout(() => { document.body.classList.remove('pressing'); clearTimeout(animationTimer); openDictionary(); }, 1000); } };
-    const endPress = () => { clearTimeout(pressTimer); clearTimeout(animationTimer); document.body.classList.remove('pressing'); };
-    document.addEventListener('mousedown', startPress); document.addEventListener('mouseup', endPress); document.addEventListener('touchstart', startPress, { passive: true }); document.addEventListener('touchend', endPress);
+    // TRIPLE TAP TO OPEN
+    let lastTap = 0;
+    let tapCount = 0;
+    const handleTapGesture = (e) => {
+        if (e.target !== document.body || dicPopup.classList.contains('open')) return;
+        const now = Date.now();
+        if (now - lastTap < 400) {
+            tapCount++;
+            if (tapCount === 3) {
+                tapCount = 0;
+                openDictionary();
+            }
+        } else {
+            tapCount = 1;
+        }
+        lastTap = now;
+    };
+    document.addEventListener('touchstart', handleTapGesture, { passive: true });
+    document.addEventListener('mousedown', (e) => { if (e.button === 0) handleTapGesture(e); });
 
     // Keyboard Logic
     const mmRows = ["ကခဂဃငစဆဇဈဉ".split(""), "ညဋဌဍဎဏတထဒဓ".split(""), "နပဖဗဘမယရ".split(""), "လဝသဟဠအ".split("")];

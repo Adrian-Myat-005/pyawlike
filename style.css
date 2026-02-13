@@ -475,13 +475,3 @@ body.dark-mode .pwa-secondary { background: rgba(255,255,255,0.05); }
 .kb-key:active { transform: scale(0.85); box-shadow: inset 2px 2px 5px var(--shadow-dark); }
 
 @keyframes dropDown { from { transform: translateX(-50%) translateY(-100%); } to { transform: translateX(-50%) translateY(0); } }
-
-/* LONG PRESS FEEDBACK - SPINNING LINES */
-body.pressing::after {
-    content: ''; position: fixed; top: var(--press-y); left: var(--press-x);
-    width: 40px; height: 40px; border: 3px solid transparent;
-    border-top: 3px solid var(--accent); border-right: 3px solid var(--accent);
-    border-radius: 50%; transform: translate(-50%, -50%);
-    pointer-events: none; animation: press-spin 1s linear infinite; z-index: 9999999;
-}
-@keyframes press-spin { 0% { transform: translate(-50%, -50%) rotate(0deg); opacity: 0.8; } 100% { transform: translate(-50%, -50%) rotate(360deg); opacity: 0.2; } }

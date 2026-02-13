@@ -305,10 +305,18 @@
 
         async function playOutput(text, lang) {
             try {
-                const voice = (lang === 'my' || lang === 'my-MM') ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
-                const res = await fetch(`https://pyawlike.vercel.app/api/edge`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice }) });
-                if (res.ok) { audioObj.src = URL.createObjectURL(await res.blob()); await audioObj.play(); }
-            } catch (e) {}
+                const tl = (lang === 'my' || lang === 'my-MM') ? 'my' : 'en';
+                const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${tl}&client=tw-ob`;
+                audioObj.src = url;
+                await audioObj.play();
+            } catch (e) {
+                // Fallback to local API
+                try {
+                    const voice = (lang === 'my' || lang === 'my-MM') ? 'my-MM-NilarNeural' : 'en-US-AvaNeural';
+                    const res = await fetch(`/api/edge`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice }) });
+                    if (res.ok) { audioObj.src = URL.createObjectURL(await res.blob()); await audioObj.play(); }
+                } catch (err) {}
+            }
         }
 
         function handleTap(lang) { 
