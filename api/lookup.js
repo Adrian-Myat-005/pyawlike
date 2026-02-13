@@ -93,7 +93,7 @@ async function fetchGoogleData(word, sl, tl) {
         if (data[1] && Array.isArray(data[1])) {
             meanings = await Promise.all(data[1].map(async (m) => {
                 const partOfSpeech = m[0];
-                const defs = await Promise.all((m[2] || []).slice(0, 3).map(async (d) => {
+                const defs = await Promise.all((m[2] || []).map(async (d) => {
                     const enDef = d[0];
                     // IMPORTANT: Ensure we always get a valid translation for the block
                     let mmDef = "";
@@ -127,9 +127,9 @@ async function fetchGoogleData(word, sl, tl) {
 
 async function fetchDatamuseData(word) {
     try {
-        const synUrl = `https://api.datamuse.com/words?rel_syn=${encodeURIComponent(word)}&max=30`;
-        const antUrl = `https://api.datamuse.com/words?rel_ant=${encodeURIComponent(word)}&max=20`;
-        const extraExUrl = `https://api.datamuse.com/words?rel_trg=${encodeURIComponent(word)}&max=15`;
+        const synUrl = `https://api.datamuse.com/words?rel_syn=${encodeURIComponent(word)}&max=100`;
+        const antUrl = `https://api.datamuse.com/words?rel_ant=${encodeURIComponent(word)}&max=100`;
+        const extraExUrl = `https://api.datamuse.com/words?rel_trg=${encodeURIComponent(word)}&max=50`;
         
         const [syns, ants, related] = await Promise.all([
             fetchJSON(synUrl).catch(() => []),
@@ -223,8 +223,7 @@ module.exports = async (req, res) => {
         
         // Deduplicate and filter short/bad examples
         finalExamples = [...new Set(finalExamples)]
-            .filter(ex => ex && ex.length > 10 && ex.toLowerCase().includes(word.toLowerCase().substring(0, 3)))
-            .slice(0, 8); // Keep up to 8 to ensure quality
+            .filter(ex => ex && ex.length > 10 && ex.toLowerCase().includes(word.toLowerCase().substring(0, 3)));
 
         // Prepare Synonyms & Antonyms (Plenty in connection)
         const finalSynonyms = [...new Set([...google.synonyms, ...datamuse.synonyms, ...freeDict.synonyms])].filter(s => s && typeof s === 'string' && s.toLowerCase() !== word.toLowerCase());
