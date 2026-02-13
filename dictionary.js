@@ -256,28 +256,31 @@
                 `;
 
                 // 4. Relations Section (Synonyms, Antonyms, Acronyms) - Preview 8 items each
-                const rendRel = (list, title, id) => {
+                const rendRel = (list, title) => {
                     if (!list || list.length === 0) return "";
                     return `
-                        <div class="relation-sub-box" id="rel-${id}">
+                        <div class="relation-sub-box">
                             <div class="relation-title">${title}</div>
                             <div class="relation-list">
                                 ${list.map((w, wi) => {
                                     const wordStr = String(w);
                                     return `<div class="relation-word ${wi >= 8 ? 'hidden-item' : ''}" onclick="window.dictionarySearch('${wordStr.replace(/'/g, "\\'")}')">${wordStr}</div>`;
                                 }).join('')}
-                                ${list.length > 8 ? `<button class="show-more-btn mini" onclick="window.showAllItems(this, 'rel-${id}')">+ ${list.length - 8} more</button>` : ''}
                             </div>
                         </div>
                     `;
                 };
 
-                const relHtml = rendRel(data.synonyms, "Same", "syns") + rendRel(data.antonyms, "Opposite", "ants") + rendRel(data.acronyms, "Acronym", "acro");
+                const relHtml = rendRel(data.synonyms, "Same") + rendRel(data.antonyms, "Opposite") + rendRel(data.acronyms, "Acronym");
+                const hasHiddenRel = (data.synonyms?.length > 8) || (data.antonyms?.length > 8) || (data.acronyms?.length > 8);
 
                 html += `
                     <div class="collapsible-section">
-                        <div class="section-header collapsed" onclick="window.toggleSection('sec-relations')">Related <span class="toggle-icon">▾</span></div>
-                        <div id="sec-relations" class="section-content collapsed">${relHtml || '<p style="opacity:0.5; font-size:12px;">No related words found.</p>'}</div>
+                        <div class="section-header" onclick="window.toggleSection('sec-relations')">Related <span class="toggle-icon">▾</span></div>
+                        <div id="sec-relations" class="section-content">
+                            ${relHtml || '<p style="opacity:0.5; font-size:12px;">No related words found.</p>'}
+                            ${hasHiddenRel ? `<button class="show-more-btn" onclick="window.showAllItems(this, 'sec-relations')">Show all related words</button>` : ''}
+                        </div>
                     </div>
                 `;
 
