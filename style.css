@@ -454,6 +454,31 @@ body.dark-mode .meaning-block { background: rgba(255,255,255,0.03); }
 .section-content { transition: all 0.3s ease-out; overflow: hidden; max-height: 2000px; }
 .section-content.collapsed { max-height: 0; opacity: 0; }
 
+.hidden-item { display: none !important; }
+
+.show-more-btn {
+    width: 100%;
+    padding: 10px;
+    background: rgba(0,0,0,0.03);
+    border: 1px dashed var(--accent);
+    border-radius: 12px;
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    cursor: pointer;
+    margin-top: 5px;
+    transition: 0.2s;
+}
+.show-more-btn:hover { background: rgba(0,0,0,0.05); }
+.show-more-btn.mini {
+    width: auto;
+    padding: 5px 12px;
+    border-style: solid;
+    border-width: 1px;
+    opacity: 0.6;
+}
+
 .relation-sub-box { margin-bottom: 15px; }
 
 .audio-btn {

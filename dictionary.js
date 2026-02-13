@@ -161,6 +161,12 @@
         }
     }
 
+    window.showAllItems = (btn, containerId) => {
+        const container = document.getElementById(containerId);
+        container.querySelectorAll('.hidden-item').forEach(item => item.classList.remove('hidden-item'));
+        btn.style.display = 'none';
+    };
+
     async function searchWord(word, saveToHist = true) {
         if (!word) return;
         if (saveToHist && dicHistory[dicHistory.length - 1] !== word) dicHistory.push(word);
@@ -201,9 +207,10 @@
                     </div>
                 `;
 
-                // 2. Meanings Section
-                const meaningsHtml = (data.meanings || []).map((m, mi) => `
-                    <div class="meaning-block">
+                // 2. Meanings Section (Preview 2)
+                const meanings = data.meanings || [];
+                const meaningsHtml = meanings.map((m, mi) => `
+                    <div class="meaning-block ${mi >= 2 ? 'hidden-item' : ''}">
                         <div class="meaning-block-header">
                             <div class="part-of-speech">${m.partOfSpeech}</div>
                             <div class="lang-switch" onclick="window.toggleLang(this)">MM</div>
@@ -220,13 +227,17 @@
                 html += `
                     <div class="collapsible-section">
                         <div class="section-header" onclick="window.toggleSection('sec-meanings')">Definitions <span class="toggle-icon">▾</span></div>
-                        <div id="sec-meanings" class="section-content">${meaningsHtml || '<p style="opacity:0.5; font-size:12px;">No definitions found.</p>'}</div>
+                        <div id="sec-meanings" class="section-content">
+                            ${meaningsHtml || '<p style="opacity:0.5; font-size:12px;">No definitions found.</p>'}
+                            ${meanings.length > 2 ? `<button class="show-more-btn" onclick="window.showAllItems(this, 'sec-meanings')">Show all definitions (${meanings.length})</button>` : ''}
+                        </div>
                     </div>
                 `;
 
-                // 3. Examples Section
-                const examplesHtml = (data.examples || []).map(ex => `
-                    <div class="example-row">
+                // 3. Examples Section (Preview 2)
+                const examples = data.examples || [];
+                const examplesHtml = examples.map((ex, ei) => `
+                    <div class="example-row ${ei >= 2 ? 'hidden-item' : ''}">
                         <div class="example-text">${ex}</div>
                         <div class="audio-btn mini" onclick="window.playText(\`${ex.replace(/'/g, "\\'").replace(/"/g, '&quot;')}\`)">
                             <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
@@ -237,25 +248,31 @@
                 html += `
                     <div class="collapsible-section">
                         <div class="section-header" onclick="window.toggleSection('sec-examples')">Examples <span class="toggle-icon">▾</span></div>
-                        <div id="sec-examples" class="section-content">${examplesHtml || '<p style="opacity:0.5; font-size:12px;">No examples found.</p>'}</div>
+                        <div id="sec-examples" class="section-content">
+                            ${examplesHtml || '<p style="opacity:0.5; font-size:12px;">No examples found.</p>'}
+                            ${examples.length > 2 ? `<button class="show-more-btn" onclick="window.showAllItems(this, 'sec-examples')">Show all examples (${examples.length})</button>` : ''}
+                        </div>
                     </div>
                 `;
 
-                // 4. Relations Section (Synonyms, Antonyms, Acronyms)
-                const rendRel = (list, title) => {
+                // 4. Relations Section (Synonyms, Antonyms, Acronyms) - Preview 8 items each
+                const rendRel = (list, title, id) => {
                     if (!list || list.length === 0) return "";
                     return `
-                        <div class="relation-sub-box">
+                        <div class="relation-sub-box" id="rel-${id}">
                             <div class="relation-title">${title}</div>
-                            <div class="relation-list">${list.map(w => {
-                                const wordStr = String(w);
-                                return `<div class="relation-word" onclick="window.dictionarySearch('${wordStr.replace(/'/g, "\\'")}')">${wordStr}</div>`;
-                            }).join('')}</div>
+                            <div class="relation-list">
+                                ${list.map((w, wi) => {
+                                    const wordStr = String(w);
+                                    return `<div class="relation-word ${wi >= 8 ? 'hidden-item' : ''}" onclick="window.dictionarySearch('${wordStr.replace(/'/g, "\\'")}')">${wordStr}</div>`;
+                                }).join('')}
+                                ${list.length > 8 ? `<button class="show-more-btn mini" onclick="window.showAllItems(this, 'rel-${id}')">+ ${list.length - 8} more</button>` : ''}
+                            </div>
                         </div>
                     `;
                 };
 
-                const relHtml = rendRel(data.synonyms, "Same") + rendRel(data.antonyms, "Opposite") + rendRel(data.acronyms, "Acronym");
+                const relHtml = rendRel(data.synonyms, "Same", "syns") + rendRel(data.antonyms, "Opposite", "ants") + rendRel(data.acronyms, "Acronym", "acro");
 
                 html += `
                     <div class="collapsible-section">
