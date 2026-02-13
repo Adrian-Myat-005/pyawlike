@@ -18,8 +18,6 @@
     const dicWordSection = document.getElementById('dicWordSection');
     const searchLangBtn = document.getElementById('searchLangBtn');
     const searchMicBtn = document.getElementById('searchMicBtn');
-    const customKeyboard = document.getElementById('custom-keyboard');
-    const kbCircle = document.getElementById('kbCircle');
 
     const clickSound = new Audio('click_eff.mp3');
     function playClickSound() {
@@ -117,7 +115,6 @@
         if (!word) return;
         if (saveToHist && dicHistory[dicHistory.length - 1] !== word) dicHistory.push(word);
         
-        customKeyboard.classList.remove('open');
         kbSuggestions.classList.remove('visible');
 
         searchLoader.classList.add('visible');
