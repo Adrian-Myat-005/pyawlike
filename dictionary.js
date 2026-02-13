@@ -14,6 +14,8 @@
     const kbSuggestions = document.getElementById('kb-suggestions');
     const searchLoader = document.getElementById('searchLoader');
     const dicHomeScreen = document.getElementById('dic-home-screen');
+    const dicStarredScreen = document.getElementById('dic-starred-screen');
+    const dicStarredList = document.getElementById('dicStarredList');
     const dicRecentWords = document.getElementById('dicRecentWords');
     const dicWordSection = document.getElementById('dicWordSection');
     const searchLangBtn = document.getElementById('searchLangBtn');
@@ -36,6 +38,7 @@
 
     async function showHomeScreen() {
         dicWordSection.style.display = 'none';
+        dicStarredScreen.style.display = 'none';
         dicHomeScreen.style.display = 'block';
         dicBackBtn.style.visibility = 'visible';
         dicBackBtn.innerHTML = '★';
@@ -47,6 +50,28 @@
                 renderFeed(data.words);
             }
         } catch (e) {}
+    }
+
+    function showStarredScreen() {
+        dicHomeScreen.style.display = 'none';
+        dicWordSection.style.display = 'none';
+        dicStarredScreen.style.display = 'block';
+        dicBackBtn.innerHTML = '←';
+        dicBackBtn.style.color = 'inherit';
+        
+        const starred = JSON.parse(localStorage.getItem('starred_vocabs') || '[]');
+        if (starred.length === 0) {
+            dicStarredList.innerHTML = "<div style='opacity:0.5; font-size:12px; text-align:center; margin-top:50px;'>No starred words yet.</div>";
+            return;
+        }
+        dicStarredList.innerHTML = starred.slice().reverse().map(s => `
+            <div class="word-card" onclick="window.dictionarySearch('${String(s.word).replace(/'/g, "\\'")}')">
+                <div class="card-top">
+                    <div class="card-word">${s.word}</div>
+                    <div class="card-trans">${s.trans}</div>
+                </div>
+            </div>
+        `).join('');
     }
 
     function renderFeed(words) {
@@ -275,8 +300,14 @@
         // IF HOME SCREEN: OPEN STARRED LIST
         if (dicHomeScreen.style.display !== 'none') {
             playClickSound();
-            document.getElementById('starredPage').classList.add('open');
-            if (window.renderStarredList) window.renderStarredList();
+            showStarredScreen();
+            return;
+        }
+
+        // IF STARRED SCREEN: BACK TO HOME
+        if (dicStarredScreen.style.display !== 'none') {
+            playClickSound();
+            showHomeScreen();
             return;
         }
 
