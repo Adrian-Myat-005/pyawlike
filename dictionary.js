@@ -123,6 +123,10 @@
         });
     };
 
+    // --- AUDIO BUTTON LOGIC ---
+    document.getElementById('audioOriginal').onclick = () => window.playText(dicOriginal.innerText);
+    document.getElementById('audioTranslated').onclick = () => window.playText(dicTranslated.innerText);
+
     searchLangBtn.addEventListener('click', () => { kbLanguage = kbLanguage === 'ENG' ? 'MM' : 'ENG'; searchLangBtn.innerText = kbLanguage; kbInput.placeholder = kbLanguage === 'ENG' ? 'Type word...' : 'စာရိုက်ပါ...'; });
     
     searchMicBtn.addEventListener('click', () => {
