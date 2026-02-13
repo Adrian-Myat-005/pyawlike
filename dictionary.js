@@ -71,11 +71,27 @@
         searchWord(word);
     };
     
+    window.toggleSection = (id) => {
+        const content = document.getElementById(id);
+        const header = content.previousElementSibling;
+        content.classList.toggle('collapsed');
+        header.classList.toggle('collapsed');
+    };
+
+    window.toggleLang = (btn) => {
+        const block = btn.closest('.meaning-block');
+        const en = block.querySelector('.def-en');
+        const mm = block.querySelector('.def-mm');
+        const isEn = en.style.display !== 'none';
+        en.style.display = isEn ? 'none' : 'block';
+        mm.style.display = isEn ? 'block' : 'none';
+        btn.innerText = isEn ? 'EN' : 'MM';
+    };
+
     async function searchWord(word, saveToHist = true) {
         if (!word) return;
         if (saveToHist && dicHistory[dicHistory.length - 1] !== word) dicHistory.push(word);
         
-        // DISMISS OVERLAPS
         customKeyboard.classList.remove('open');
         kbSuggestions.classList.remove('visible');
 
@@ -89,49 +105,90 @@
             const res = await fetch(`/api/lookup?word=${encodeURIComponent(word)}`);
             if (res.ok) {
                 const data = await res.json();
-                dicOriginal.innerText = data.original;
-                dicTranslated.innerText = data.translated;
                 
-                // Render Meanings (Plenty of meanings)
-                const meaningsHtml = (data.meanings || []).map(m => `
-                    <div class="meaning-block">
-                        <div class="part-of-speech">${m.partOfSpeech}</div>
-                        ${(m.definitions || []).map(d => `<div class="definition-item">• ${d.definition}</div>`).join('')}
-                    </div>
-                `).join('');
-                
-                // Insert meanings before examples
-                dicWordSection.innerHTML = `
+                // 1. Header (Original + Translation)
+                let html = `
                     <div class="dic-word-row">
                         <div class="dic-original">${data.original}</div>
                         <div class="audio-btn" onclick="window.playText('${data.original.replace(/'/g, "\\'")}')">
                             <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
                         </div>
                     </div>
-                    <div class="dic-word-row" style="margin-top: 5px;">
+                    <div class="dic-word-row" style="margin-top: 5px; margin-bottom: 20px;">
                         <div class="dic-translated">${data.translated}</div>
                         <div class="audio-btn mini" onclick="window.playText('${data.translated.replace(/'/g, "\\'")}')">
                             <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
                         </div>
                     </div>
-                    <div class="meanings-container">${meaningsHtml}</div>
                 `;
-                
-                // --- AUTO PLAY VOICE ---
-                window.playText(data.original);
-                setTimeout(() => window.playText(data.translated), 1200);
 
-                dicExamples.innerHTML = (data.examples || []).map(ex => `
+                // 2. Meanings Section
+                const meaningsHtml = (data.meanings || []).map((m, mi) => `
+                    <div class="meaning-block">
+                        <div class="meaning-block-header">
+                            <div class="part-of-speech">${m.partOfSpeech}</div>
+                            <div class="lang-switch" onclick="window.toggleLang(this)">MM</div>
+                        </div>
+                        ${(m.definitions || []).map(d => `
+                            <div class="definition-container">
+                                <div class="def-en">• ${d.en}</div>
+                                <div class="def-mm" style="display:none">• ${d.mm}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `).join('');
+                
+                html += `
+                    <div class="collapsible-section">
+                        <div class="section-header" onclick="window.toggleSection('sec-meanings')">Definitions <span class="toggle-icon">▾</span></div>
+                        <div id="sec-meanings" class="section-content">${meaningsHtml || '<p style="opacity:0.5; font-size:12px;">No definitions found.</p>'}</div>
+                    </div>
+                `;
+
+                // 3. Examples Section
+                const examplesHtml = (data.examples || []).map(ex => `
                     <div class="example-row">
                         <div class="example-text">${ex}</div>
                         <div class="audio-btn mini" onclick="window.playText(\`${ex.replace(/'/g, "\\'").replace(/"/g, '&quot;')}\`)">
                             <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
                         </div>
-                    </div>`).join('');
-                const rend = (l, t) => { if (l && l.length > 0) { t.parentElement.style.display = 'block'; t.innerHTML = l.slice(0, 8).map(w => `<div class="relation-word" onclick="window.dictionarySearch('${w.replace(/'/g, "\\'")}')">${w}</div>`).join(''); } else { t.parentElement.style.display = 'none'; } };
-                rend(data.synonyms, dicSynonyms); rend(data.antonyms, dicAntonyms); rend(data.acronyms, dicAcronyms);
+                    </div>
+                `).join('');
+
+                html += `
+                    <div class="collapsible-section">
+                        <div class="section-header" onclick="window.toggleSection('sec-examples')">Examples <span class="toggle-icon">▾</span></div>
+                        <div id="sec-examples" class="section-content">${examplesHtml || '<p style="opacity:0.5; font-size:12px;">No examples found.</p>'}</div>
+                    </div>
+                `;
+
+                // 4. Relations Section (Synonyms, Antonyms, Acronyms)
+                const rendRel = (list, title) => {
+                    if (!list || list.length === 0) return "";
+                    return `
+                        <div class="relation-sub-box">
+                            <div class="relation-title">${title}</div>
+                            <div class="relation-list">${list.map(w => `<div class="relation-word" onclick="window.dictionarySearch('${w.replace(/'/g, "\\'")}')">${w}</div>`).join('')}</div>
+                        </div>
+                    `;
+                };
+
+                const relHtml = rendRel(data.synonyms, "Same") + rendRel(data.antonyms, "Opposite") + rendRel(data.acronyms, "Acronym");
+
+                html += `
+                    <div class="collapsible-section">
+                        <div class="section-header collapsed" onclick="window.toggleSection('sec-relations')">Related <span class="toggle-icon">▾</span></div>
+                        <div id="sec-relations" class="section-content collapsed">${relHtml || '<p style="opacity:0.5; font-size:12px;">No related words found.</p>'}</div>
+                    </div>
+                `;
+
+                dicWordSection.innerHTML = html;
+                
+                // --- AUTO PLAY VOICE ---
+                window.playText(data.original);
+                setTimeout(() => window.playText(data.translated), 1200);
             }
-        } catch (e) {} finally { 
+        } catch (e) { console.error(e); } finally { 
             dicPopup.classList.remove('loading'); 
             searchLoader.classList.remove('visible'); 
         }

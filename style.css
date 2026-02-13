@@ -415,10 +415,24 @@ body.dark-mode .pwa-secondary { background: rgba(255,255,255,0.05); }
 .dic-translated { font-size: 20px; opacity: 0.7; margin-top: 5px; }
 
 .meanings-container { margin-top: 15px; display: flex; flex-direction: column; gap: 10px; }
-.meaning-block { background: rgba(0,0,0,0.02); padding: 10px; border-radius: 12px; }
+.meaning-block { background: rgba(0,0,0,0.02); padding: 15px; border-radius: 18px; margin-bottom: 12px; position: relative; }
 body.dark-mode .meaning-block { background: rgba(255,255,255,0.03); }
-.part-of-speech { font-size: 10px; font-weight: 900; text-transform: uppercase; color: var(--accent); margin-bottom: 5px; letter-spacing: 1px; }
-.definition-item { font-size: 14px; line-height: 1.4; color: var(--text); opacity: 0.8; }
+.meaning-block-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.part-of-speech { font-size: 10px; font-weight: 900; text-transform: uppercase; color: var(--accent); letter-spacing: 1px; }
+.lang-switch { font-size: 9px; font-weight: 900; background: var(--accent); color: white; padding: 2px 6px; border-radius: 6px; cursor: pointer; opacity: 0.7; }
+.lang-switch:hover { opacity: 1; }
+.definition-container { margin-bottom: 6px; }
+.def-en, .def-mm { font-size: 14px; line-height: 1.5; color: var(--text); opacity: 0.85; }
+
+/* Collapsible Sections */
+.collapsible-section { margin-top: 15px; border-bottom: 1px solid rgba(0,0,0,0.03); padding-bottom: 10px; }
+.section-header { font-size: 11px; font-weight: 800; opacity: 0.5; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; padding: 10px 0; }
+.section-header .toggle-icon { transition: transform 0.3s; }
+.section-header.collapsed .toggle-icon { transform: rotate(-90deg); }
+.section-content { transition: all 0.3s ease-out; overflow: hidden; max-height: 2000px; }
+.section-content.collapsed { max-height: 0; opacity: 0; }
+
+.relation-sub-box { margin-bottom: 15px; }
 
 .audio-btn {
     width: 32px; height: 32px; border-radius: 50%; background: var(--bg);

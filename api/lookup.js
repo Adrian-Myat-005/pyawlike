@@ -53,45 +53,46 @@ async function fetchJSON(url) {
     });
 }
 
+async function translateText(text, sl, tl) {
+    try {
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`;
+        const data = await fetchJSON(url);
+        return data[0] ? data[0].map(s => s[0]).join('').trim() : text;
+    } catch (e) { return text; }
+}
+
 async function fetchGoogleData(word, sl, tl) {
     try {
-        // dt=t (translation), dt=bd (definitions), dt=ex (examples), dt=ss (synonyms), dt=md (more definitions)
         const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&dt=bd&dt=ex&dt=ss&dt=md&q=${encodeURIComponent(word)}`;
         const data = await fetchJSON(url);
-        
-        // 1. Core Translation
         const translation = data[0] ? data[0].map(s => s[0]).join('').trim() : "";
         
-        // 2. Extra Definitions / Meanings (plenty meanings)
         let meanings = [];
         if (data[1] && Array.isArray(data[1])) {
-            meanings = data[1].map(m => ({
-                partOfSpeech: m[0], // noun, verb, etc.
-                definitions: (m[2] || []).map(d => ({ definition: d[0], synonyms: d[1] }))
+            meanings = await Promise.all(data[1].map(async (m) => {
+                const defs = await Promise.all((m[2] || []).slice(0, 3).map(async (d) => {
+                    const enDef = d[0];
+                    // Translate the definition itself to Burmese if searching English word
+                    const mmDef = (sl === 'en') ? await translateText(enDef, 'en', 'my') : enDef;
+                    return { en: enDef, mm: mmDef };
+                }));
+                return { partOfSpeech: m[0], definitions: defs };
             }));
         }
 
-        // 3. Examples (Aggressively seeking 5)
         let examples = [];
         if (data[13] && Array.isArray(data[13])) {
             let rawList = data[13][0] || [];
-            examples = rawList
-                .map(item => (Array.isArray(item) && typeof item[0] === 'string') ? item[0].replace(/<\/?b>/g, '') : null)
-                .filter(e => e && e.length > 5);
+            examples = rawList.map(item => (Array.isArray(item) && typeof item[0] === 'string') ? item[0].replace(/<\/?b>/g, '') : null).filter(e => e);
         }
         
-        // 4. Synonyms
         let synonyms = [];
         if (data[11] && Array.isArray(data[11])) {
-            data[11].forEach(group => {
-                if (group[1]) synonyms.push(...group[1].map(s => s[0]));
-            });
+            data[11].forEach(group => { if (group[1]) synonyms.push(...group[1].map(s => s[0])); });
         }
         
         return { translation, meanings, examples, synonyms: [...new Set(synonyms)] };
-    } catch (e) { 
-        return { translation: "", meanings: [], examples: [], synonyms: [] }; 
-    }
+    } catch (e) { return { translation: "", meanings: [], examples: [], synonyms: [] }; }
 }
 
 async function fetchDatamuseData(word) {
@@ -145,8 +146,11 @@ module.exports = async (req, res) => {
         const combinedMeanings = [...google.meanings];
         if (dbRows.length > 0) {
             dbRows.forEach(row => {
-                if (row.definition && !combinedMeanings.some(m => m.definitions.some(d => d.definition === row.definition))) {
-                    combinedMeanings.push({ partOfSpeech: row.wordtype || "other", definitions: [{ definition: row.definition }] });
+                if (row.definition && !combinedMeanings.some(m => m.definitions.some(d => d.en === row.definition))) {
+                    combinedMeanings.push({ 
+                        partOfSpeech: row.wordtype || "other", 
+                        definitions: [{ en: row.definition, mm: "Definition from database" }] 
+                    });
                 }
             });
         }
