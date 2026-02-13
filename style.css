@@ -414,6 +414,18 @@ body.dark-mode .pwa-secondary { background: rgba(255,255,255,0.05); }
 .dic-original { font-size: 28px; font-weight: 900; color: var(--text); }
 .dic-translated { font-size: 20px; opacity: 0.7; margin-top: 5px; }
 
+.star-btn {
+    font-size: 24px;
+    cursor: pointer;
+    transition: 0.2s;
+    user-select: none;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.star-btn:active { transform: scale(0.8); }
+
 .meanings-container { margin-top: 15px; display: flex; flex-direction: column; gap: 10px; }
 .meaning-block { background: rgba(0,0,0,0.02); padding: 15px; border-radius: 18px; margin-bottom: 12px; position: relative; }
 body.dark-mode .meaning-block { background: rgba(255,255,255,0.03); }

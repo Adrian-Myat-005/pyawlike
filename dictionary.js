@@ -88,6 +88,30 @@
         btn.innerText = isEn ? 'EN' : 'MM';
     };
 
+    window.toggleStar = (word, trans) => {
+        let starred = JSON.parse(localStorage.getItem('starred_vocabs') || '[]');
+        const index = starred.findIndex(item => item.word === word);
+        if (index > -1) {
+            starred.splice(index, 1);
+        } else {
+            starred.push({ word, trans, time: Date.now() });
+        }
+        localStorage.setItem('starred_vocabs', JSON.stringify(starred));
+        renderStarIcon(word);
+        if (window.renderStarredList) window.renderStarredList();
+    };
+
+    function renderStarIcon(word) {
+        const starred = JSON.parse(localStorage.getItem('starred_vocabs') || '[]');
+        const isStarred = starred.some(item => item.word === word);
+        const starBtn = document.getElementById('starWordBtn');
+        if (starBtn) {
+            starBtn.classList.toggle('active', isStarred);
+            starBtn.innerHTML = isStarred ? '★' : '☆';
+            starBtn.style.color = isStarred ? '#d4af37' : 'inherit';
+        }
+    }
+
     async function searchWord(word, saveToHist = true) {
         if (!word) return;
         if (saveToHist && dicHistory[dicHistory.length - 1] !== word) dicHistory.push(word);
@@ -106,12 +130,15 @@
             if (res.ok) {
                 const data = await res.json();
                 
-                // 1. Header (Original + Translation)
+                // 1. Header (Original + Translation + Star)
                 let html = `
                     <div class="dic-word-row">
                         <div class="dic-original">${data.original}</div>
-                        <div class="audio-btn" onclick="window.playText('${data.original.replace(/'/g, "\\'")}')">
-                            <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+                        <div style="display:flex; gap:10px;">
+                            <div id="starWordBtn" class="star-btn" onclick="window.toggleStar('${data.original.replace(/'/g, "\\'")}', '${data.translated.replace(/'/g, "\\'")}')">☆</div>
+                            <div class="audio-btn" onclick="window.playText('${data.original.replace(/'/g, "\\'")}')">
+                                <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+                            </div>
                         </div>
                     </div>
                     <div class="dic-word-row" style="margin-top: 5px; margin-bottom: 20px;">
@@ -183,6 +210,7 @@
                 `;
 
                 dicWordSection.innerHTML = html;
+                renderStarIcon(data.original);
                 
                 // --- AUTO PLAY VOICE ---
                 window.playText(data.original);
@@ -206,8 +234,7 @@
     };
 
     // --- AUDIO BUTTON LOGIC ---
-    document.getElementById('audioOriginal').onclick = () => window.playText(dicOriginal.innerText);
-    document.getElementById('audioTranslated').onclick = () => window.playText(dicTranslated.innerText);
+    // Removed specific element click listeners as they are now handled by inline onclick in dynamic HTML
 
     searchLangBtn.addEventListener('click', () => { kbLanguage = kbLanguage === 'ENG' ? 'MM' : 'ENG'; searchLangBtn.innerText = kbLanguage; kbInput.placeholder = kbLanguage === 'ENG' ? 'Type word...' : 'စာရိုက်ပါ...'; });
     
