@@ -482,3 +482,32 @@ body.dark-mode .pwa-secondary { background: rgba(255,255,255,0.05); }
 .kb-key:active { transform: scale(0.85); box-shadow: inset 2px 2px 5px var(--shadow-dark); }
 
 @keyframes dropDown { from { transform: translateX(-50%) translateY(-100%); } to { transform: translateX(-50%) translateY(0); } }
+
+.payment-caution {
+    position: fixed;
+    bottom: 110px;
+    left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    background: var(--bg);
+    padding: 8px 14px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text);
+    box-shadow: 0 5px 15px var(--shadow-dark);
+    z-index: 2000000;
+    text-align: center;
+    max-width: 240px;
+    transition: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    pointer-events: none;
+    opacity: 0;
+    border: 1px solid rgba(0,0,0,0.03);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.payment-caution.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+body.dark-mode .payment-caution { border-color: rgba(255,255,255,0.05); }
+

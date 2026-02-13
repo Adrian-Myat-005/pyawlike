@@ -55,6 +55,7 @@
 
     <div class="status-area">
         <div class="transcription" id="textDisplay"></div>
+        <div id="payment-caution" class="payment-caution"></div>
         <div class="wave-container" id="waveContainer">
             <div class="wave-bar"></div>
             <div class="wave-bar"></div>
@@ -440,25 +441,25 @@
                 playClickSound();
                 const method = btn.getAttribute('data-method');
                 if (method === 'kpay') {
-                    // 1. Copy phone number to clipboard (Standard fallback in Myanmar)
+                    // 1. Copy phone number to clipboard
                     const phone = "09971171628";
                     navigator.clipboard.writeText(phone).then(() => {
-                        coffeeStepText.innerText = `Phone number ${phone} copied! Opening KPay...`;
+                        coffeeStepText.innerText = `Number ${phone} copied!`;
                     });
 
-                    // 2. KBZ Pay Deep Link (Primary attempt)
+                    // 2. KBZ Pay Deep Link
                     const kpayUrl = `kbzpay://p2p/transfer?phoneno=${phone}&amount=${selectedAmount}`;
-                    
-                    // Try different methods to trigger the app
                     window.location.href = kpayUrl;
                     
-                    // 3. Auto-close and instructions after a delay
+                    // 3. Show caution below record button
                     setTimeout(() => {
                         coffeePopup.classList.add('hidden');
-                        textDisplay.innerText = "If KPay didn't open, please use the copied number 09971171628 manually.";
-                        textDisplay.classList.add('visible');
-                    }, 2000);
-                    return; // Avoid immediate hide so user sees the "Copied" message
+                        const caution = document.getElementById('payment-caution');
+                        caution.innerText = "If KPay didn't open, please use the copied number 09971171628 manually.";
+                        caution.classList.add('visible');
+                        setTimeout(() => caution.classList.remove('visible'), 6000);
+                    }, 1500);
+                    return; 
                 } else if (method === 'wave') {
                     // Placeholder for WavePay
                     alert("WavePay integration coming soon!");
