@@ -45,8 +45,8 @@
     </div>
 
     <div class="dropdown" id="menu">
-        <div class="menu-item" id="surveyBtn" style="color: #d4af37; opacity: 1; font-weight: 900; border-bottom: 1px solid rgba(212,175,55,0.1); padding-bottom: 15px; margin-bottom: 20px;">
-            PREMIUM SURVEY <span style="font-size: 14px;">★</span>
+        <div class="menu-item" id="coffeeBtn" style="color: #d4af37; opacity: 1; font-weight: 900; border-bottom: 1px solid rgba(212,175,55,0.1); padding-bottom: 15px; margin-bottom: 20px;">
+            BUY ME A COFFEE <span style="font-size: 14px;">☕</span>
         </div>
         <div class="menu-item" id="menuInstallItem">INSTALL APP <div class="nav-plus" style="position:static; transform:none; width:20px; height:20px; font-size:16px;">+</div></div>
         <div class="menu-item">DARK MODE <input type="checkbox" id="themeSw"></div>
@@ -144,6 +144,33 @@
         <div class="dic-footer">
             <div class="mic-btn" id="searchMicBtn">
                 <svg viewBox="0 0 24 24"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+            </div>
+        </div>
+    </div>
+
+    <div id="coffee-popup" class="pwa-popup-top hidden" style="top: 50%; transform: translate(-50%, -50%); height: auto; border-radius: 30px; border-bottom: none; box-shadow: var(--tactile-shadow);">
+        <div class="pwa-minimal-content" style="border-radius: 30px;">
+            <div class="pwa-text">
+                <p style="font-size: 18px; font-weight: 900; margin-bottom: 5px;">☕ Support PyawLike</p>
+                <p id="coffee-step-text" style="font-size: 13px; opacity: 0.6;">Choose an amount to donate</p>
+            </div>
+            
+            <!-- Step 1: Amounts -->
+            <div id="coffee-amounts" class="pwa-actions" style="flex-wrap: wrap; gap: 10px;">
+                <button class="pwa-secondary amount-btn" data-amt="2000">2000 MMK</button>
+                <button class="pwa-secondary amount-btn" data-amt="3000">3000 MMK</button>
+                <button class="pwa-secondary amount-btn" data-amt="5000">5000 MMK</button>
+                <button class="pwa-secondary amount-btn" data-amt="10000">10000 MMK</button>
+            </div>
+
+            <!-- Step 2: Payment Methods -->
+            <div id="coffee-methods" class="pwa-actions hidden" style="gap: 10px;">
+                <button class="pwa-primary method-btn" data-method="kpay">KBZ Pay</button>
+                <button class="pwa-secondary method-btn" data-method="wave" style="opacity: 0.5;">WavePay</button>
+            </div>
+
+            <div class="pwa-actions">
+                <button id="coffee-cancel-btn" class="pwa-secondary" style="width: 100%; margin-top: 10px;">Cancel</button>
             </div>
         </div>
     </div>
@@ -375,9 +402,61 @@
         document.getElementById('themeSw').addEventListener('change', (e) => document.body.classList.toggle('dark-mode', e.target.checked));
         document.getElementById('fsBtn').addEventListener('click', () => { !document.fullscreenElement ? document.documentElement.requestFullscreen() : document.exitFullscreen(); });
         
-        document.getElementById('surveyBtn').addEventListener('click', () => {
+        document.getElementById('coffeeBtn').addEventListener('click', () => {
             playClickSound();
-            window.open('https://forms.gle/pyawlike-survey', '_blank');
+            menu.classList.remove('open');
+            document.getElementById('coffee-popup').classList.remove('hidden');
+            showCoffeeStep(1);
+        });
+
+        const coffeePopup = document.getElementById('coffee-popup');
+        const coffeeStepText = document.getElementById('coffee-step-text');
+        const coffeeAmounts = document.getElementById('coffee-amounts');
+        const coffeeMethods = document.getElementById('coffee-methods');
+        let selectedAmount = 0;
+
+        function showCoffeeStep(step) {
+            if (step === 1) {
+                coffeeStepText.innerText = "Choose an amount to donate";
+                coffeeAmounts.classList.remove('hidden');
+                coffeeMethods.classList.add('hidden');
+            } else {
+                coffeeStepText.innerText = `Choose payment for ${selectedAmount} MMK`;
+                coffeeAmounts.classList.add('hidden');
+                coffeeMethods.classList.remove('hidden');
+            }
+        }
+
+        document.querySelectorAll('.amount-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                playClickSound();
+                selectedAmount = btn.getAttribute('data-amt');
+                showCoffeeStep(2);
+            });
+        });
+
+        document.querySelectorAll('.method-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                playClickSound();
+                const method = btn.getAttribute('data-method');
+                if (method === 'kpay') {
+                    // KBZ Pay Deep Link
+                    window.location.href = `kbzpay://p2p/transfer?phoneno=09971171628&amount=${selectedAmount}`;
+                    // Fallback for some browsers/platforms
+                    setTimeout(() => {
+                        coffeeStepText.innerText = "Redirecting to KBZ Pay...";
+                    }, 500);
+                } else if (method === 'wave') {
+                    // Placeholder for WavePay
+                    alert("WavePay integration coming soon!");
+                }
+                coffeePopup.classList.add('hidden');
+            });
+        });
+
+        document.getElementById('coffee-cancel-btn').addEventListener('click', () => {
+            playClickSound();
+            coffeePopup.classList.add('hidden');
         });
         
         // Initial render
