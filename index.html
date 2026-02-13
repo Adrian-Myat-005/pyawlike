@@ -110,7 +110,7 @@
             <div class="search-loader" id="searchLoader"></div>
             <div class="kb-input-container" id="kbInputContainer">
                 <div class="lang-indicator" id="searchLangBtn">EN</div>
-                <input type="text" id="kb-input" placeholder="Type word..." inputmode="none">
+                <input type="text" id="kb-input" placeholder="Type word...">
                 <div id="kb-suggestions" class="kb-suggestions"></div>
             </div>
             <div class="close-history" id="closeDic">×</div>
@@ -154,10 +154,6 @@
                 <button id="coffee-cancel-btn" class="pwa-secondary" style="width: 100%; margin-top: 10px;">Cancel</button>
             </div>
         </div>
-    </div>
-
-    <div id="custom-keyboard">
-        <div class="kb-circle" id="kbCircle"></div>
     </div>
 
     <script src="pwa-popup.js"></script>
@@ -405,13 +401,6 @@
             `).join('');
         }
         window.renderStarredList = renderStarredList;
-
-        starredBtn.addEventListener('click', () => {
-            playClickSound();
-            menu.classList.remove('open');
-            starredPage.classList.add('open');
-            renderStarredList();
-        });
 
         closeStarred.addEventListener('click', () => {
             playClickSound();

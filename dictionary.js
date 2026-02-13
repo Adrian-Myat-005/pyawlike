@@ -266,7 +266,15 @@
         rec.start();
     }
 
-    closeDic.addEventListener('click', () => { dicPopup.classList.remove('open'); customKeyboard.classList.remove('open'); kbInputContainer.classList.remove('visible'); });
+    closeDic.addEventListener('click', () => { dicPopup.classList.remove('open'); kbInputContainer.classList.remove('visible'); });
+    
+    kbInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            searchWord(kbInput.value);
+            kbInput.blur();
+        }
+    });
+
     dicBackBtn.addEventListener('click', () => { 
         // IF HOME SCREEN: OPEN STARRED LIST
         if (dicHomeScreen.style.display !== 'none') {
@@ -309,45 +317,6 @@
     };
     document.addEventListener('touchstart', handleTapGesture, { passive: true });
     document.addEventListener('mousedown', (e) => { if (e.button === 0) handleTapGesture(e); });
-
-    // Keyboard Logic
-    const mmRows = ["ကခဂဃငစဆဇဈဉ".split(""), "ညဋဌဍဎဏတထဒဓ".split(""), "နပဖဗဘမယရ".split(""), "လဝသဟဠအ".split("")];
-    const enRows = ["qwertyuiop".split(""), "asdfghjkl".split(""), "zxcvbnm".split("")];
-
-    function generateKeys() {
-        kbCircle.innerHTML = "";
-        const rows = kbLanguage === 'ENG' ? enRows : mmRows;
-        const centerX = 225, centerY = 225;
-        const config = [{ r: 210, a: 2.2, s: 40 }, { r: 170, a: 2.0, s: 38 }, { r: 130, a: 1.8, s: 34 }, { r: 92, a: 1.6, s: 30 }];
-
-        rows.forEach((row, ri) => {
-            const { r, a, s } = config[ri] || config[0];
-            row.forEach((key, ki) => {
-                const angle = (0.95 * Math.PI) + (ki / (row.length - 1)) * a;
-                const btn = document.createElement('div');
-                btn.className = 'kb-key'; btn.innerText = key;
-                btn.style.left = `${centerX + r * Math.cos(angle) - s/2}px`;
-                btn.style.top = `${centerY + r * Math.sin(angle) - s/2}px`;
-                btn.style.width = btn.style.height = `${s}px`;
-                btn.addEventListener('click', (e) => { e.stopPropagation(); kbInput.value += key; kbInput.dispatchEvent(new Event('input')); });
-                kbCircle.appendChild(btn);
-            });
-        });
-
-        const ctrl = (x, y, txt, bg, act) => {
-            const b = document.createElement('div'); b.className = 'kb-key'; b.innerText = txt;
-            b.style.left = `${x}px`; b.style.top = `${y}px`; b.style.background = bg; b.style.color = 'white';
-            b.addEventListener('click', (e) => { e.stopPropagation(); act(); }); kbCircle.appendChild(b);
-        };
-        ctrl(-45, 180, kbLanguage === 'ENG' ? 'MM' : 'EN', 'var(--accent)', () => { kbLanguage = kbLanguage==='ENG'?'MM':'ENG'; generateKeys(); });
-        ctrl(centerX - 35, centerY - 35, '🔍', 'var(--success)', () => { searchWord(kbInput.value); });
-        ctrl(centerX + 65, centerY - 65, '⌫', 'var(--error)', () => { kbInput.value = kbInput.value.slice(0,-1); kbInput.dispatchEvent(new Event('input')); });
-    }
-
-    kbInput.addEventListener('click', () => {
-        customKeyboard.classList.add('open');
-        generateKeys();
-    });
 
     kbInput.addEventListener('input', async () => {
         if (kbInput.value.trim()) {

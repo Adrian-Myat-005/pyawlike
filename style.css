@@ -490,29 +490,6 @@ body.dark-mode .meaning-block { background: rgba(255,255,255,0.03); }
 .card-word { font-size: 18px; font-weight: 900; color: var(--text); }
 .card-trans { font-size: 15px; color: var(--text); opacity: 0.7; font-weight: 600; }
 
-/* --- CUSTOM KEYBOARD --- */
-#custom-keyboard {
-    position: fixed; bottom: 0; right: 0; width: 520px; height: 520px;
-    z-index: 110000; pointer-events: none;
-    transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    transform: translate(100%, 100%);
-}
-#custom-keyboard.open { transform: translate(20%, 20%); pointer-events: auto; }
-.kb-circle {
-    width: 450px; height: 450px; background: var(--btn-white); border-radius: 50%;
-    box-shadow: -10px -10px 30px var(--shadow-dark);
-    position: absolute; right: 0; bottom: 0; border: 5px solid var(--bg);
-}
-.kb-key {
-    position: absolute; width: 45px; height: 45px;
-    background: var(--bg); border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 15px; cursor: pointer;
-    box-shadow: 3px 3px 7px var(--shadow-dark), -2px -2px 5px var(--shadow-light);
-    transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); user-select: none;
-}
-.kb-key:active { transform: scale(0.85); box-shadow: inset 2px 2px 5px var(--shadow-dark); }
-
 @keyframes dropDown { from { transform: translateX(-50%) translateY(-100%); } to { transform: translateX(-50%) translateY(0); } }
 
 .payment-caution {
