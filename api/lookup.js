@@ -1,5 +1,5 @@
 const https = require('https');
-const Database = require('better-sqlite3');
+const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
 // Initialize DB connection in READ-ONLY mode
@@ -8,32 +8,46 @@ let db;
 
 function getDB() {
     if (!db) {
-        db = new Database(dbPath, { readonly: true, fileMustExist: false });
+        try {
+            db = new sqlite3.Database(dbPath, sqlite3.OPEN_READONLY);
+        } catch (e) {
+            console.error("DB Connection Error:", e);
+            return null;
+        }
     }
     return db;
 }
 
 async function queryDB(word) {
-    try {
+    return new Promise((resolve) => {
         const d = getDB();
-        const stmt = d.prepare("SELECT * FROM entries WHERE word = ? COLLATE NOCASE");
-        return stmt.all(word);
-    } catch (e) {
-        console.error("DB Query Error:", e);
-        return [];
-    }
+        if (!d) return resolve([]);
+        
+        const sql = "SELECT * FROM entries WHERE word = ? COLLATE NOCASE";
+        d.all(sql, [word], (err, rows) => {
+            if (err) {
+                console.error("DB Query Error:", err);
+                return resolve([]);
+            }
+            resolve(rows || []);
+        });
+    });
 }
 
 async function queryFeed(offset = 0) {
-    try {
+    return new Promise((resolve) => {
         const d = getDB();
+        if (!d) return resolve([]);
+
         const sql = "SELECT DISTINCT word, translation FROM entries WHERE translation IS NOT NULL ORDER BY rowid DESC LIMIT 50 OFFSET ?";
-        const stmt = d.prepare(sql);
-        return stmt.all(offset);
-    } catch (e) {
-        console.error("Feed Query Error:", e);
-        return [];
-    }
+        d.all(sql, [offset], (err, rows) => {
+            if (err) {
+                console.error("Feed Query Error:", err);
+                return resolve([]);
+            }
+            resolve(rows || []);
+        });
+    });
 }
 
 async function updateDB(word, translation, examples, synonyms, antonyms, acronyms) {
@@ -213,8 +227,17 @@ module.exports = async (req, res) => {
             .slice(0, 8); // Keep up to 8 to ensure quality
 
         // Prepare Synonyms & Antonyms (Plenty in connection)
-        const finalSynonyms = [...new Set([...google.synonyms, ...datamuse.synonyms, ...freeDict.synonyms])].filter(s => s.toLowerCase() !== word.toLowerCase());
-        const finalAntonyms = [...new Set([...datamuse.antonyms, ...freeDict.antonyms])].filter(a => a.toLowerCase() !== word.toLowerCase());
+        const finalSynonyms = [...new Set([...google.synonyms, ...datamuse.synonyms, ...freeDict.synonyms])].filter(s => s && typeof s === 'string' && s.toLowerCase() !== word.toLowerCase());
+        const finalAntonyms = [...new Set([...datamuse.antonyms, ...freeDict.antonyms])].filter(a => a && typeof a === 'string' && a.toLowerCase() !== word.toLowerCase());
+
+        let acronyms = [];
+        if (dbRows[0] && dbRows[0].antonyms) {
+            try {
+                acronyms = JSON.parse(dbRows[0].antonyms);
+            } catch(e) {
+                console.warn("Failed to parse acronyms from DB");
+            }
+        }
 
         res.status(200).json({
             original: word,
@@ -223,10 +246,19 @@ module.exports = async (req, res) => {
             examples: finalExamples,
             synonyms: finalSynonyms,
             antonyms: finalAntonyms,
-            acronyms: dbRows[0] ? JSON.parse(dbRows[0].antonyms || '[]') : []
+            acronyms: acronyms
         });
     } catch (e) { 
         console.error("Lookup Error:", e);
-        res.status(500).json({ error: "Search failed, please try again." }); 
+        res.status(200).json({ 
+            error: "Search failed, please try again.",
+            original: word,
+            translated: "Error",
+            meanings: [],
+            examples: [],
+            synonyms: [],
+            antonyms: [],
+            acronyms: []
+        }); 
     }
 };

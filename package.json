@@ -10,7 +10,7 @@
     "@capacitor/android": "6.0.0",
     "@capacitor/cli": "6.0.0",
     "@capacitor/core": "6.0.0",
-    "better-sqlite3": "^12.6.2",
+    "sqlite3": "^5.1.7",
     "node-pre-gyp": "^0.17.0",
     "uuid": "^9.0.1",
     "ws": "^8.16.0"

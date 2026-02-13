@@ -175,9 +175,9 @@
         
         try {
             const res = await fetch(`/api/lookup?word=${encodeURIComponent(word)}`);
-            if (res.ok) {
-                const data = await res.json();
-                
+            const data = await res.json().catch(() => ({}));
+            
+            if (res.ok && !data.error) {
                 // Update Back Button to Arrow
                 dicBackBtn.innerHTML = '←';
                 dicBackBtn.style.color = 'inherit';
@@ -270,21 +270,46 @@
                 // --- AUTO PLAY VOICE ---
                 window.playText(data.original);
                 setTimeout(() => window.playText(data.translated), 1200);
+            } else {
+                throw new Error(data.error || `Search failed with status ${res.status}`);
             }
-        } catch (e) { console.error(e); } finally { 
+        } catch (e) { 
+            console.error("Search error:", e);
+            dicWordSection.innerHTML = `<div style="text-align:center; margin-top:50px; opacity:0.6;">
+                <p>Unable to find "${word}".</p>
+                <p style="font-size:12px;">Please check your connection or try another word.</p>
+            </div>`;
+        } finally { 
             dicPopup.classList.remove('loading'); 
             searchLoader.classList.remove('visible'); 
         }
     }
 
     window.playText = (text) => {
+        if (!text) return;
         const isMM = /[\u1000-\u109F]/.test(text);
         const lang = isMM ? 'my' : 'en';
+        
+        // Try Direct Google TTS first (usually works for short phrases if not blocked)
         const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${lang}&client=tw-ob`;
-        new Audio(url).play().catch(e => {
-            console.error("Direct TTS failed, trying proxy...");
-            fetch(`/api/edge`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice: isMM ? 'my-MM-NilarNeural' : 'en-US-AvaNeural' }) })
-                .then(res => res.blob()).then(blob => new Audio(URL.createObjectURL(blob)).play());
+        const audio = new Audio(url);
+        
+        audio.play().catch(e => {
+            // Fallback to our Edge TTS Proxy
+            fetch(`/api/edge`, { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify({ text, voice: isMM ? 'my-MM-NilarNeural' : 'en-US-AvaNeural' }) 
+            })
+            .then(res => {
+                if (!res.ok) throw new Error('Proxy TTS failed');
+                return res.blob();
+            })
+            .then(blob => {
+                const proxyAudio = new Audio(URL.createObjectURL(blob));
+                proxyAudio.play().catch(err => console.error("TTS Playback failed", err));
+            })
+            .catch(err => console.error("All TTS systems failed", err));
         });
     };
 
