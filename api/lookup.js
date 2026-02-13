@@ -1,46 +1,45 @@
 const https = require('https');
-const sqlite3 = require('sqlite3').verbose();
+const Database = require('better-sqlite3');
 const path = require('path');
 
-// Initialize DB connection
+// Initialize DB connection in READ-ONLY mode
 const dbPath = path.resolve(__dirname, 'dictionary.db');
-const db = new sqlite3.Database(dbPath, sqlite3.OPEN_READWRITE);
+let db;
+
+function getDB() {
+    if (!db) {
+        db = new Database(dbPath, { readonly: true, fileMustExist: false });
+    }
+    return db;
+}
 
 async function queryDB(word) {
-    return new Promise((resolve, reject) => {
-        db.all("SELECT * FROM entries WHERE word = ? COLLATE NOCASE", [word], (err, rows) => {
-            if (err) reject(err);
-            else resolve(rows);
-        });
-    });
+    try {
+        const d = getDB();
+        const stmt = d.prepare("SELECT * FROM entries WHERE word = ? COLLATE NOCASE");
+        return stmt.all(word);
+    } catch (e) {
+        console.error("DB Query Error:", e);
+        return [];
+    }
 }
 
 async function queryFeed(offset = 0) {
-    return new Promise((resolve, reject) => {
-        // Fetch words with translations for the blog-style feed
+    try {
+        const d = getDB();
         const sql = "SELECT DISTINCT word, translation FROM entries WHERE translation IS NOT NULL ORDER BY rowid DESC LIMIT 50 OFFSET ?";
-        db.all(sql, [offset], (err, rows) => {
-            if (err) reject(err);
-            else resolve(rows);
-        });
-    });
+        const stmt = d.prepare(sql);
+        return stmt.all(offset);
+    } catch (e) {
+        console.error("Feed Query Error:", e);
+        return [];
+    }
 }
 
 async function updateDB(word, translation, examples, synonyms, antonyms, acronyms) {
-    return new Promise((resolve) => {
-        const examplesJson = JSON.stringify(examples);
-        const synonymsJson = JSON.stringify(synonyms);
-        const antonymsJson = JSON.stringify(antonyms);
-        const acronymsJson = JSON.stringify(acronyms);
-        const updateSql = `UPDATE entries SET translation = ?, examples = ?, synonyms = ?, antonyms = ?, acronyms = ? WHERE word = ? COLLATE NOCASE`;
-        db.run(updateSql, [translation, examplesJson, synonymsJson, antonymsJson, acronymsJson, word], function(err) {
-            if (err) return resolve(0);
-            if (this.changes === 0) {
-                const insertSql = `INSERT INTO entries (word, translation, examples, synonyms, antonyms, acronyms, wordtype, definition) VALUES (?, ?, ?, ?, ?, ?, 'added', 'Learned from user search')`;
-                db.run(insertSql, [word, translation, examplesJson, synonymsJson, antonymsJson, acronymsJson], () => resolve(1));
-            } else resolve(this.changes);
-        });
-    });
+    // Vercel filesystem is read-only. We cannot update the DB.
+    // In a real production app, you'd use an external DB like Supabase or Upstash.
+    return 0;
 }
 
 async function fetchJSON(url) {

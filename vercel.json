@@ -1,5 +1,10 @@
 {
   "outputDirectory": ".",
   "installCommand": "npm install",
-  "buildCommand": "npm run build"
+  "buildCommand": "npm run build",
+  "functions": {
+    "api/lookup.js": {
+      "includeFiles": "api/dictionary.db"
+    }
+  }
 }
