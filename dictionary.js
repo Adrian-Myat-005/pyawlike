@@ -261,8 +261,19 @@
     }
 
     closeDic.addEventListener('click', () => { dicPopup.classList.remove('open'); customKeyboard.classList.remove('open'); kbInputContainer.classList.remove('visible'); });
-    dicBackBtn.addEventListener('click', () => { if (dicHistory.length > 1) { dicHistory.pop(); searchWord(dicHistory.pop(), true); } else { showHomeScreen(); } });
-    function updateBackBtn() { dicBackBtn.style.visibility = dicHistory.length > 1 ? 'visible' : 'hidden'; }
+    dicBackBtn.addEventListener('click', () => { 
+        if (dicHistory.length > 1) { 
+            dicHistory.pop(); 
+            searchWord(dicHistory.pop(), true); 
+        } else { 
+            dicHistory = [];
+            showHomeScreen(); 
+        } 
+    });
+    function updateBackBtn() { 
+        // Always show back button if we are in the word section
+        dicBackBtn.style.visibility = 'visible'; 
+    }
 
     // TRIPLE TAP TO OPEN
     let lastTap = 0;
