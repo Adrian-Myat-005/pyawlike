@@ -223,20 +223,41 @@
             historyPage.classList.remove('open');
         });
 
-        let historyClickTimeout;
-        historyToggle.addEventListener('click', (e) => {
-            if (e.detail === 1) {
-                historyClickTimeout = setTimeout(() => {
-                    playClickSound();
-                    isRecordingHistory = !isRecordingHistory;
-                    historyToggle.innerText = isRecordingHistory ? "REC" : "+";
-                    historyToggle.classList.toggle('recording', isRecordingHistory);
-                }, 250);
-            } else if (e.detail === 2) {
-                clearTimeout(historyClickTimeout);
+        let historyPressTimer;
+        historyToggle.addEventListener('mousedown', (e) => {
+            historyPressTimer = setTimeout(() => {
                 playClickSound();
-                historyPage.classList.toggle('open');
-                if (historyPage.classList.contains('open')) renderHistory();
+                historyPage.classList.add('open');
+                renderHistory();
+                historyPressTimer = null;
+            }, 500);
+        });
+        historyToggle.addEventListener('mouseup', () => {
+            if (historyPressTimer) {
+                clearTimeout(historyPressTimer);
+                // Single Click Logic
+                playClickSound();
+                isRecordingHistory = !isRecordingHistory;
+                historyToggle.innerText = isRecordingHistory ? "REC" : "+";
+                historyToggle.classList.toggle('recording', isRecordingHistory);
+            }
+        });
+        // Touch support
+        historyToggle.addEventListener('touchstart', (e) => {
+            historyPressTimer = setTimeout(() => {
+                playClickSound();
+                historyPage.classList.add('open');
+                renderHistory();
+                historyPressTimer = null;
+            }, 500);
+        }, { passive: true });
+        historyToggle.addEventListener('touchend', () => {
+            if (historyPressTimer) {
+                clearTimeout(historyPressTimer);
+                playClickSound();
+                isRecordingHistory = !isRecordingHistory;
+                historyToggle.innerText = isRecordingHistory ? "REC" : "+";
+                historyToggle.classList.toggle('recording', isRecordingHistory);
             }
         });
 
