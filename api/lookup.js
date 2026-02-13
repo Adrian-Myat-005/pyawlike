@@ -54,11 +54,19 @@ async function fetchJSON(url) {
 }
 
 async function translateText(text, sl, tl) {
+    if (!text || sl === tl) return text;
     try {
+        // Using a more structured request for better translation quality
         const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&q=${encodeURIComponent(text)}`;
         const data = await fetchJSON(url);
-        return data[0] ? data[0].map(s => s[0]).join('').trim() : text;
-    } catch (e) { return text; }
+        if (data && data[0]) {
+            return data[0].map(s => s[0]).join('').trim();
+        }
+        return text;
+    } catch (e) { 
+        console.error("Translation Error:", e);
+        return text; 
+    }
 }
 
 async function fetchGoogleData(word, sl, tl) {
@@ -70,13 +78,21 @@ async function fetchGoogleData(word, sl, tl) {
         let meanings = [];
         if (data[1] && Array.isArray(data[1])) {
             meanings = await Promise.all(data[1].map(async (m) => {
+                const partOfSpeech = m[0];
                 const defs = await Promise.all((m[2] || []).slice(0, 3).map(async (d) => {
                     const enDef = d[0];
-                    // Translate the definition itself to Burmese if searching English word
-                    const mmDef = (sl === 'en') ? await translateText(enDef, 'en', 'my') : enDef;
-                    return { en: enDef, mm: mmDef };
+                    // IMPORTANT: Ensure we always get a valid translation for the block
+                    let mmDef = "";
+                    if (sl === 'en' && tl === 'my') {
+                        mmDef = await translateText(enDef, 'en', 'my');
+                    } else if (sl === 'my' && tl === 'en') {
+                        mmDef = await translateText(enDef, 'my', 'en');
+                    } else {
+                        mmDef = enDef;
+                    }
+                    return { en: enDef, mm: mmDef || "No translation available" };
                 }));
-                return { partOfSpeech: m[0], definitions: defs };
+                return { partOfSpeech, definitions: defs };
             }));
         }
 

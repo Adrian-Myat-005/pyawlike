@@ -68,7 +68,6 @@
 
     window.dictionarySearch = (word) => {
         // CLOSE OVERLAPS
-        customKeyboard.classList.remove('open');
         kbSuggestions.classList.remove('visible');
         searchWord(word);
     };
