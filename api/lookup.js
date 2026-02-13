@@ -129,6 +129,24 @@ async function fetchDatamuseData(word) {
     } catch (e) { return { synonyms: [], related: [] }; }
 }
 
+async function fetchFreeDictData(word) {
+    try {
+        const url = `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`;
+        const data = await fetchJSON(url);
+        let examples = [];
+        if (Array.isArray(data)) {
+            data.forEach(entry => {
+                (entry.meanings || []).forEach(m => {
+                    (m.definitions || []).forEach(d => {
+                        if (d.example) examples.push(d.example);
+                    });
+                });
+            });
+        }
+        return examples;
+    } catch (e) { return []; }
+}
+
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
@@ -153,9 +171,10 @@ module.exports = async (req, res) => {
         const isMM = /[\u1000-\u109F]/.test(word);
         
         // Fetch from external APIs aggressively
-        const [google, datamuse] = await Promise.all([
+        const [google, datamuse, freeDictEx] = await Promise.all([
             fetchGoogleData(word, isMM ? 'my' : 'en', isMM ? 'en' : 'my'),
-            isMM ? Promise.resolve({synonyms:[], related:[]}) : fetchDatamuseData(word)
+            isMM ? Promise.resolve({synonyms:[], related:[]}) : fetchDatamuseData(word),
+            isMM ? Promise.resolve([]) : fetchFreeDictData(word)
         ]);
 
         // Merge DB data with Fresh API data
@@ -171,18 +190,19 @@ module.exports = async (req, res) => {
             });
         }
 
-        // Prepare Examples (Targeting 5)
-        let finalExamples = [...google.examples];
+        // Prepare Examples (Aggressively targeting 5+)
+        let finalExamples = [...google.examples, ...freeDictEx];
         if (dbRows.length > 0 && dbRows[0].examples) {
             try {
                 const dbEx = JSON.parse(dbRows[0].examples);
                 finalExamples.push(...dbEx);
             } catch(e) {}
         }
-        finalExamples = [...new Set(finalExamples)].filter(ex => ex.length > 10).slice(0, 5);
-
-        // If we still need more examples for common English words, we can't easily generate them, 
-        // but we ensure the ones we have are high quality.
+        
+        // Deduplicate and filter short/bad examples
+        finalExamples = [...new Set(finalExamples)]
+            .filter(ex => ex && ex.length > 10 && ex.toLowerCase().includes(word.toLowerCase().substring(0, 3)))
+            .slice(0, 8); // Keep up to 8 to ensure quality
 
         const finalSynonyms = [...new Set([...google.synonyms, ...datamuse.synonyms])];
 
