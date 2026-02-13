@@ -195,7 +195,10 @@
                     return `
                         <div class="relation-sub-box">
                             <div class="relation-title">${title}</div>
-                            <div class="relation-list">${list.map(w => `<div class="relation-word" onclick="window.dictionarySearch('${w.replace(/'/g, "\\'")}')">${w}</div>`).join('')}</div>
+                            <div class="relation-list">${list.map(w => {
+                                const wordStr = String(w);
+                                return `<div class="relation-word" onclick="window.dictionarySearch('${wordStr.replace(/'/g, "\\'")}')">${wordStr}</div>`;
+                            }).join('')}</div>
                         </div>
                     `;
                 };
