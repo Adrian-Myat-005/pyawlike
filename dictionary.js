@@ -91,6 +91,11 @@
                 const data = await res.json();
                 dicOriginal.innerText = data.original;
                 dicTranslated.innerText = data.translated;
+                
+                // --- AUTO PLAY VOICE ---
+                window.playText(data.original);
+                setTimeout(() => window.playText(data.translated), 1200);
+
                 dicExamples.innerHTML = (data.examples || []).map(ex => `
                     <div class="example-row">
                         <div class="example-text">${ex}</div>
