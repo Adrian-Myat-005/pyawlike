@@ -490,6 +490,18 @@ body.dark-mode .show-more-btn { background: rgba(255,255,255,0.03); }
 .audio-btn.mini { width: 24px; height: 24px; min-width: 24px; }
 .audio-btn.mini svg { width: 12px; height: 12px; }
 
+.audio-btn.loading {
+    pointer-events: none;
+    opacity: 0.6;
+}
+.audio-btn.loading svg {
+    animation: audio-spin 1s linear infinite;
+}
+@keyframes audio-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 .dic-examples { flex: 1; overflow-y: auto; margin-top: 10px; padding-right: 5px; }
 .example-row {
     display: flex; justify-content: space-between; align-items: center;

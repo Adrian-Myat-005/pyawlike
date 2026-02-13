@@ -204,14 +204,14 @@
                         <div class="dic-original">${data.original}</div>
                         <div style="display:flex; gap:10px;">
                             <div id="starWordBtn" class="star-btn" onclick="window.toggleStar('${String(data.original).replace(/'/g, "\\'")}', '${String(data.translated).replace(/'/g, "\\'")}')">☆</div>
-                            <div class="audio-btn" onclick="window.playText('${String(data.original).replace(/'/g, "\\'")}')">
+                            <div class="audio-btn" onclick="window.playText('${String(data.original).replace(/'/g, "\\'")}', this)">
                                 <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
                             </div>
                         </div>
                     </div>
                     <div class="dic-word-row" style="margin-top: 5px; margin-bottom: 20px;">
                         <div class="dic-translated">${data.translated}</div>
-                        <div class="audio-btn mini" onclick="window.playText('${String(data.translated).replace(/'/g, "\\'")}')">
+                        <div class="audio-btn mini" onclick="window.playText('${String(data.translated).replace(/'/g, "\\'")}', this)">
                             <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
                         </div>
                     </div>
@@ -249,7 +249,7 @@
                 const examplesHtml = examples.map((ex, ei) => `
                     <div class="example-row ${ei >= 2 ? 'hidden-item' : ''}" style="${ei >= 2 ? 'display:none' : ''}">
                         <div class="example-text">${ex}</div>
-                        <div class="audio-btn mini" onclick="window.playText(\`${ex.replace(/'/g, "\\'").replace(/"/g, '&quot;')}\`)">
+                        <div class="audio-btn mini" onclick="window.playText(\`${ex.replace(/'/g, "\\'").replace(/"/g, '&quot;')}\`, this)">
                             <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
                         </div>
                     </div>
@@ -298,8 +298,8 @@
                 renderStarIcon(data.original);
                 
                 // --- AUTO PLAY VOICE ---
-                window.playText(data.original);
-                setTimeout(() => window.playText(data.translated), 1200);
+                const mainVoiceBtn = dicWordSection.querySelector('.audio-btn');
+                window.playText(data.original, mainVoiceBtn);
             } else {
                 throw new Error(data.error || `Search failed with status ${res.status}`);
             }
@@ -315,32 +315,62 @@
         }
     }
 
-    window.playText = (text) => {
-        if (!text) return;
+    let currentAudio = null;
+    window.playText = (text, btn) => {
+        if (!text || (btn && btn.classList.contains('loading'))) return;
+        
+        // Stop any currently playing audio
+        if (currentAudio) {
+            currentAudio.pause();
+            currentAudio = null;
+        }
+
         const isMM = /[\u1000-\u109F]/.test(text);
         const lang = isMM ? 'my' : 'en';
         
-        // Try Direct Google TTS first (usually works for short phrases if not blocked)
+        if (btn) btn.classList.add('loading');
+        
         const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${lang}&client=tw-ob`;
         const audio = new Audio(url);
+        currentAudio = audio;
         
-        audio.play().catch(e => {
-            // Fallback to our Edge TTS Proxy
-            fetch(`/api/edge`, { 
-                method: 'POST', 
-                headers: { 'Content-Type': 'application/json' }, 
-                body: JSON.stringify({ text, voice: isMM ? 'my-MM-NilarNeural' : 'en-US-AvaNeural' }) 
+        const cleanup = () => {
+            if (btn) btn.classList.remove('loading');
+            if (currentAudio === audio) currentAudio = null;
+        };
+
+        audio.play()
+            .then(() => {
+                audio.onended = cleanup;
             })
-            .then(res => {
-                if (!res.ok) throw new Error('Proxy TTS failed');
-                return res.blob();
-            })
-            .then(blob => {
-                const proxyAudio = new Audio(URL.createObjectURL(blob));
-                proxyAudio.play().catch(err => console.error("TTS Playback failed", err));
-            })
-            .catch(err => console.error("All TTS systems failed", err));
-        });
+            .catch(e => {
+                // Fallback to our Edge TTS Proxy
+                fetch(`/api/edge`, { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify({ text, voice: isMM ? 'my-MM-NilarNeural' : 'en-US-AvaNeural' }) 
+                })
+                .then(res => {
+                    if (!res.ok) throw new Error('Proxy TTS failed');
+                    return res.blob();
+                })
+                .then(blob => {
+                    const proxyAudio = new Audio(URL.createObjectURL(blob));
+                    currentAudio = proxyAudio;
+                    proxyAudio.play()
+                        .then(() => {
+                            proxyAudio.onended = cleanup;
+                        })
+                        .catch(err => {
+                            console.error("TTS Playback failed", err);
+                            cleanup();
+                        });
+                })
+                .catch(err => {
+                    console.error("All TTS systems failed", err);
+                    cleanup();
+                });
+            });
     };
 
     // --- AUDIO BUTTON LOGIC ---
