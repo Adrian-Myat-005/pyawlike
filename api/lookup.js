@@ -165,7 +165,7 @@ module.exports = async (req, res) => {
                 if (row.definition && !combinedMeanings.some(m => m.definitions.some(d => d.en === row.definition))) {
                     combinedMeanings.push({ 
                         partOfSpeech: row.wordtype || "other", 
-                        definitions: [{ en: row.definition, mm: "Definition from database" }] 
+                        definitions: [{ en: row.definition, mm: "" }] 
                     });
                 }
             });

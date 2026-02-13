@@ -102,11 +102,36 @@
         header.classList.toggle('collapsed');
     };
 
-    window.toggleLang = (btn) => {
+    window.toggleLang = async (btn) => {
         const block = btn.closest('.meaning-block');
         const en = block.querySelector('.def-en');
         const mm = block.querySelector('.def-mm');
         const isEn = en.style.display !== 'none';
+
+        if (isEn) {
+            // Check if we need to fetch the translation
+            const currentMM = mm.innerText.replace('• ', '').trim();
+            if (!currentMM || currentMM === "Definition from database") {
+                const textToTranslate = en.innerText.replace('• ', '').trim();
+                mm.innerText = "• Translating...";
+                en.style.display = 'none';
+                mm.style.display = 'block';
+                btn.innerText = 'EN';
+
+                try {
+                    const res = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=my&dt=t&q=${encodeURIComponent(textToTranslate)}`);
+                    const data = await res.json();
+                    if (data && data[0]) {
+                        const result = data[0].map(s => s[0]).join('').trim();
+                        mm.innerText = `• ${result}`;
+                    }
+                } catch (e) {
+                    mm.innerText = "• Translation failed.";
+                }
+                return;
+            }
+        }
+
         en.style.display = isEn ? 'none' : 'block';
         mm.style.display = isEn ? 'block' : 'none';
         btn.innerText = isEn ? 'EN' : 'MM';
