@@ -39,7 +39,9 @@
     async function showHomeScreen() {
         dicWordSection.style.display = 'none';
         dicHomeScreen.style.display = 'block';
-        dicBackBtn.style.visibility = 'hidden';
+        dicBackBtn.style.visibility = 'visible';
+        dicBackBtn.innerHTML = '★';
+        dicBackBtn.style.color = '#d4af37';
         try {
             const res = await fetch('/api/lookup?type=feed');
             if (res.ok) {
@@ -55,7 +57,7 @@
             return;
         }
         dicRecentWords.innerHTML = words.map(w => `
-            <div class="word-card" onclick="window.dictionarySearch('${w.word.replace(/'/g, "\\'")}')">
+            <div class="word-card" onclick="window.dictionarySearch('${String(w.word).replace(/'/g, "\\'")}')">
                 <div class="card-top">
                     <div class="card-word">${w.word}</div>
                     <div class="card-trans">${w.translation}</div>
@@ -130,20 +132,24 @@
             if (res.ok) {
                 const data = await res.json();
                 
+                // Update Back Button to Arrow
+                dicBackBtn.innerHTML = '←';
+                dicBackBtn.style.color = 'inherit';
+
                 // 1. Header (Original + Translation + Star)
                 let html = `
                     <div class="dic-word-row">
                         <div class="dic-original">${data.original}</div>
                         <div style="display:flex; gap:10px;">
-                            <div id="starWordBtn" class="star-btn" onclick="window.toggleStar('${data.original.replace(/'/g, "\\'")}', '${data.translated.replace(/'/g, "\\'")}')">☆</div>
-                            <div class="audio-btn" onclick="window.playText('${data.original.replace(/'/g, "\\'")}')">
+                            <div id="starWordBtn" class="star-btn" onclick="window.toggleStar('${String(data.original).replace(/'/g, "\\'")}', '${String(data.translated).replace(/'/g, "\\'")}')">☆</div>
+                            <div class="audio-btn" onclick="window.playText('${String(data.original).replace(/'/g, "\\'")}')">
                                 <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
                             </div>
                         </div>
                     </div>
                     <div class="dic-word-row" style="margin-top: 5px; margin-bottom: 20px;">
                         <div class="dic-translated">${data.translated}</div>
-                        <div class="audio-btn mini" onclick="window.playText('${data.translated.replace(/'/g, "\\'")}')">
+                        <div class="audio-btn mini" onclick="window.playText('${String(data.translated).replace(/'/g, "\\'")}')">
                             <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
                         </div>
                     </div>
@@ -262,6 +268,15 @@
 
     closeDic.addEventListener('click', () => { dicPopup.classList.remove('open'); customKeyboard.classList.remove('open'); kbInputContainer.classList.remove('visible'); });
     dicBackBtn.addEventListener('click', () => { 
+        // IF HOME SCREEN: OPEN STARRED LIST
+        if (dicHomeScreen.style.display !== 'none') {
+            playClickSound();
+            document.getElementById('starredPage').classList.add('open');
+            if (window.renderStarredList) window.renderStarredList();
+            return;
+        }
+
+        // IF WORD VIEW: GO BACK
         if (dicHistory.length > 1) { 
             dicHistory.pop(); 
             searchWord(dicHistory.pop(), true); 
