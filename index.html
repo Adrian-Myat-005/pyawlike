@@ -440,12 +440,25 @@
                 playClickSound();
                 const method = btn.getAttribute('data-method');
                 if (method === 'kpay') {
-                    // KBZ Pay Deep Link
-                    window.location.href = `kbzpay://p2p/transfer?phoneno=09971171628&amount=${selectedAmount}`;
-                    // Fallback for some browsers/platforms
+                    // 1. Copy phone number to clipboard (Standard fallback in Myanmar)
+                    const phone = "09971171628";
+                    navigator.clipboard.writeText(phone).then(() => {
+                        coffeeStepText.innerText = `Phone number ${phone} copied! Opening KPay...`;
+                    });
+
+                    // 2. KBZ Pay Deep Link (Primary attempt)
+                    const kpayUrl = `kbzpay://p2p/transfer?phoneno=${phone}&amount=${selectedAmount}`;
+                    
+                    // Try different methods to trigger the app
+                    window.location.href = kpayUrl;
+                    
+                    // 3. Auto-close and instructions after a delay
                     setTimeout(() => {
-                        coffeeStepText.innerText = "Redirecting to KBZ Pay...";
-                    }, 500);
+                        coffeePopup.classList.add('hidden');
+                        textDisplay.innerText = "If KPay didn't open, please use the copied number 09971171628 manually.";
+                        textDisplay.classList.add('visible');
+                    }, 2000);
+                    return; // Avoid immediate hide so user sees the "Copied" message
                 } else if (method === 'wave') {
                     // Placeholder for WavePay
                     alert("WavePay integration coming soon!");
