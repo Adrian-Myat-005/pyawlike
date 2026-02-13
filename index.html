@@ -455,9 +455,9 @@
                     setTimeout(() => {
                         coffeePopup.classList.add('hidden');
                         const caution = document.getElementById('payment-caution');
-                        caution.innerText = "If KPay didn't open, please use the copied number 09971171628 manually.";
+                        caution.innerText = `TAP TO COPY: ${phone}`;
                         caution.classList.add('visible');
-                        setTimeout(() => caution.classList.remove('visible'), 6000);
+                        setTimeout(() => caution.classList.remove('visible'), 8000);
                     }, 1500);
                     return; 
                 } else if (method === 'wave') {
@@ -471,6 +471,18 @@
         document.getElementById('coffee-cancel-btn').addEventListener('click', () => {
             playClickSound();
             coffeePopup.classList.add('hidden');
+        });
+
+        const cautionBox = document.getElementById('payment-caution');
+        cautionBox.addEventListener('click', () => {
+            const phone = "09971171628";
+            navigator.clipboard.writeText(phone).then(() => {
+                playClickSound();
+                cautionBox.innerText = "NUMBER COPIED! ✅";
+                setTimeout(() => {
+                    cautionBox.innerText = `TAP TO COPY: ${phone}`;
+                }, 1500);
+            });
         });
         
         // Initial render

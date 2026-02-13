@@ -485,7 +485,7 @@ body.dark-mode .pwa-secondary { background: rgba(255,255,255,0.05); }
 
 .payment-caution {
     position: fixed;
-    bottom: 110px;
+    top: calc(50% + 130px);
     left: 50%;
     transform: translateX(-50%) translateY(10px);
     background: var(--bg);
@@ -499,7 +499,8 @@ body.dark-mode .pwa-secondary { background: rgba(255,255,255,0.05); }
     text-align: center;
     max-width: 240px;
     transition: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    pointer-events: none;
+    pointer-events: auto;
+    cursor: pointer;
     opacity: 0;
     border: 1px solid rgba(0,0,0,0.03);
     text-transform: uppercase;
