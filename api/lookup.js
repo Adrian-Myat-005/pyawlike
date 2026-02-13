@@ -55,56 +55,61 @@ async function fetchJSON(url) {
 
 async function fetchGoogleData(word, sl, tl) {
     try {
-        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&dt=bd&dt=ex&dt=ss&q=${encodeURIComponent(word)}`;
+        // dt=t (translation), dt=bd (definitions), dt=ex (examples), dt=ss (synonyms), dt=md (more definitions)
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${sl}&tl=${tl}&dt=t&dt=bd&dt=ex&dt=ss&dt=md&q=${encodeURIComponent(word)}`;
         const data = await fetchJSON(url);
+        
+        // 1. Core Translation
         const translation = data[0] ? data[0].map(s => s[0]).join('').trim() : "";
+        
+        // 2. Extra Definitions / Meanings (plenty meanings)
+        let meanings = [];
+        if (data[1] && Array.isArray(data[1])) {
+            meanings = data[1].map(m => ({
+                partOfSpeech: m[0], // noun, verb, etc.
+                definitions: (m[2] || []).map(d => ({ definition: d[0], synonyms: d[1] }))
+            }));
+        }
+
+        // 3. Examples (Aggressively seeking 5)
         let examples = [];
         if (data[13] && Array.isArray(data[13])) {
-            let rawList = data[13];
-            if (Array.isArray(rawList[0]) && Array.isArray(rawList[0][0])) rawList = rawList[0];
-            examples = rawList.map(item => (Array.isArray(item) && typeof item[0] === 'string') ? item[0].replace(/<\/?b>/g, '') : null).filter(e => e);
+            let rawList = data[13][0] || [];
+            examples = rawList
+                .map(item => (Array.isArray(item) && typeof item[0] === 'string') ? item[0].replace(/<\/?b>/g, '') : null)
+                .filter(e => e && e.length > 5);
         }
         
-        let synonyms = [], antonyms = [];
-        // Extract synonyms from Google response (dt=ss or dt=bd)
-        if (data[1] && Array.isArray(data[1])) {
-            data[1].forEach(type => {
-                if (type[2]) {
-                    type[2].forEach(synGroup => {
-                        if (synGroup[1]) synonyms.push(...synGroup[1]);
-                    });
-                }
+        // 4. Synonyms
+        let synonyms = [];
+        if (data[11] && Array.isArray(data[11])) {
+            data[11].forEach(group => {
+                if (group[1]) synonyms.push(...group[1].map(s => s[0]));
             });
         }
         
-        return { translation, examples, synonyms: [...new Set(synonyms)], antonyms };
-    } catch (e) { return { translation: "", examples: [], synonyms: [], antonyms: [] }; }
+        return { translation, meanings, examples, synonyms: [...new Set(synonyms)] };
+    } catch (e) { 
+        return { translation: "", meanings: [], examples: [], synonyms: [] }; 
+    }
 }
 
 async function fetchDatamuseData(word) {
     try {
-        const synUrl = `https://api.datamuse.com/words?rel_syn=${encodeURIComponent(word)}&max=10`;
-        const antUrl = `https://api.datamuse.com/words?rel_ant=${encodeURIComponent(word)}&max=10`;
-        // Datamuse doesn't have a direct acronym relation, but ml (means like) can sometimes find them
-        // or we can look for words that are all caps or short
-        const acroUrl = `https://api.datamuse.com/words?ml=${encodeURIComponent(word)}&max=20`;
+        // Fetch extra synonyms and examples (usage hints)
+        const synUrl = `https://api.datamuse.com/words?rel_syn=${encodeURIComponent(word)}&max=20`;
+        const extraExUrl = `https://api.datamuse.com/words?rel_trg=${encodeURIComponent(word)}&max=10`;
         
-        const [syns, ants, related] = await Promise.all([
-            fetchJSON(synUrl),
-            fetchJSON(antUrl),
-            fetchJSON(acroUrl)
+        const [syns, related] = await Promise.all([
+            fetchJSON(synUrl).catch(() => []),
+            fetchJSON(extraExUrl).catch(() => [])
         ]);
         
-        const acronyms = related
-            .filter(w => w.word.length <= 5 && w.word === w.word.toUpperCase() && w.word !== word.toUpperCase())
-            .map(w => w.word);
-
         return {
             synonyms: syns.map(w => w.word),
-            antonyms: ants.map(w => w.word),
-            acronyms: acronyms
+            related: related.map(w => w.word)
         };
-    } catch (e) { return { synonyms: [], antonyms: [], acronyms: [] }; }
+    } catch (e) { return { synonyms: [], related: [] }; }
 }
 
 module.exports = async (req, res) => {
@@ -113,7 +118,7 @@ module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     if (req.method === 'OPTIONS') return res.status(200).end();
 
-    const word = req.query.word || (req.body && req.body.word);
+    const word = (req.query.word || (req.body && req.body.word) || "").trim();
     const type = req.query.type;
     const offset = parseInt(req.query.offset) || 0;
 
@@ -128,39 +133,50 @@ module.exports = async (req, res) => {
 
     try {
         const dbRows = await queryDB(word);
-        if (dbRows.length > 0 && dbRows[0].translation && dbRows[0].examples && JSON.parse(dbRows[0].examples).length > 0) {
-            const row = dbRows[0];
-            return res.status(200).json({
-                original: word,
-                translated: row.translation,
-                meanings: dbRows.map(r => ({ partOfSpeech: r.wordtype, definitions: [{ definition: r.definition }] })),
-                examples: JSON.parse(row.examples).slice(0, 5),
-                synonyms: JSON.parse(row.synonyms || '[]'),
-                antonyms: JSON.parse(row.antonyms || '[]'),
-                acronyms: JSON.parse(row.acronyms || '[]')
+        const isMM = /[\u1000-\u109F]/.test(word);
+        
+        // Fetch from external APIs aggressively
+        const [google, datamuse] = await Promise.all([
+            fetchGoogleData(word, isMM ? 'my' : 'en', isMM ? 'en' : 'my'),
+            isMM ? Promise.resolve({synonyms:[], related:[]}) : fetchDatamuseData(word)
+        ]);
+
+        // Merge DB data with Fresh API data
+        const combinedMeanings = [...google.meanings];
+        if (dbRows.length > 0) {
+            dbRows.forEach(row => {
+                if (row.definition && !combinedMeanings.some(m => m.definitions.some(d => d.definition === row.definition))) {
+                    combinedMeanings.push({ partOfSpeech: row.wordtype || "other", definitions: [{ definition: row.definition }] });
+                }
             });
         }
 
-        const isMM = /[\u1000-\u109F]/.test(word);
-        const [google, datamuse] = await Promise.all([
-            fetchGoogleData(word, isMM ? 'my' : 'en', isMM ? 'en' : 'my'),
-            isMM ? Promise.resolve({synonyms:[], antonyms:[], acronyms:[]}) : fetchDatamuseData(word)
-        ]);
+        // Prepare Examples (Targeting 5)
+        let finalExamples = [...google.examples];
+        if (dbRows.length > 0 && dbRows[0].examples) {
+            try {
+                const dbEx = JSON.parse(dbRows[0].examples);
+                finalExamples.push(...dbEx);
+            } catch(e) {}
+        }
+        finalExamples = [...new Set(finalExamples)].filter(ex => ex.length > 10).slice(0, 5);
 
-        const synonyms = [...new Set([...google.synonyms, ...datamuse.synonyms])];
-        const antonyms = [...new Set([...google.antonyms, ...datamuse.antonyms])];
-        const acronyms = datamuse.acronyms;
+        // If we still need more examples for common English words, we can't easily generate them, 
+        // but we ensure the ones we have are high quality.
 
-        if (google.translation) await updateDB(word, google.translation, google.examples, synonyms, antonyms, acronyms);
+        const finalSynonyms = [...new Set([...google.synonyms, ...datamuse.synonyms])];
 
         res.status(200).json({
             original: word,
-            translated: google.translation,
-            meanings: dbRows.map(r => ({ partOfSpeech: r.wordtype, definitions: [{ definition: r.definition }] })),
-            examples: google.examples.slice(0, 5),
-            synonyms: synonyms,
-            antonyms: antonyms,
-            acronyms: acronyms
+            translated: google.translation || (dbRows[0] ? dbRows[0].translation : ""),
+            meanings: combinedMeanings,
+            examples: finalExamples,
+            synonyms: finalSynonyms,
+            antonyms: dbRows[0] ? JSON.parse(dbRows[0].antonyms || '[]') : [],
+            acronyms: dbRows[0] ? JSON.parse(dbRows[0].acronyms || '[]') : []
         });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { 
+        console.error("Lookup Error:", e);
+        res.status(500).json({ error: "Search failed, please try again." }); 
+    }
 };

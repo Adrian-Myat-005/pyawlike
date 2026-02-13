@@ -92,6 +92,31 @@
                 dicOriginal.innerText = data.original;
                 dicTranslated.innerText = data.translated;
                 
+                // Render Meanings (Plenty of meanings)
+                const meaningsHtml = (data.meanings || []).map(m => `
+                    <div class="meaning-block">
+                        <div class="part-of-speech">${m.partOfSpeech}</div>
+                        ${(m.definitions || []).map(d => `<div class="definition-item">• ${d.definition}</div>`).join('')}
+                    </div>
+                `).join('');
+                
+                // Insert meanings before examples
+                dicWordSection.innerHTML = `
+                    <div class="dic-word-row">
+                        <div class="dic-original">${data.original}</div>
+                        <div class="audio-btn" onclick="window.playText('${data.original.replace(/'/g, "\\'")}')">
+                            <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+                        </div>
+                    </div>
+                    <div class="dic-word-row" style="margin-top: 5px;">
+                        <div class="dic-translated">${data.translated}</div>
+                        <div class="audio-btn mini" onclick="window.playText('${data.translated.replace(/'/g, "\\'")}')">
+                            <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg>
+                        </div>
+                    </div>
+                    <div class="meanings-container">${meaningsHtml}</div>
+                `;
+                
                 // --- AUTO PLAY VOICE ---
                 window.playText(data.original);
                 setTimeout(() => window.playText(data.translated), 1200);
